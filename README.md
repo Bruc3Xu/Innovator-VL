@@ -52,6 +52,10 @@
   <a href="https://github.com/NVIDIA/Megatron-LM">
     <img src="https://img.shields.io/badge/Built%20with-Megatron--LM-76B900?logo=nvidia" alt="Megatron-LM">
   </a>
+  <!-- WeChat -->
+  <a href="https://mp.weixin.qq.com/s/_SuNLvgNsoOA8HWrvwRGsw?scene=1">
+    <img src="https://img.shields.io/badge/-WeChat@机器之心-000000?logo=wechat&logoColor=07C160" alt="WeChat">
+  </a>
 </p>
 
 ---
