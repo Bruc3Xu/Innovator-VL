@@ -74,7 +74,7 @@ print("  _align_features 处理时:")
 print("    - 看到 reward_model 是 Features，调用 reward_model.items()")
 print("    - 得到 ('ground_truth', Value('string')) 和 ('style', Value('string'))")
 print("    - 识别 Value('string') 是叶子节点，不再递归")
-print("    - ✅ 成功：正确处理")
+print("    - ✅ success：正确处理")
 
 # 5. 如何转换
 print("\n" + "=" * 80)
@@ -114,6 +114,6 @@ print("=" * 80)
 print("1. 普通 dict 是 Python 内置类型")
 print("2. Features 是 datasets 库的特殊类型，继承自 dict 但增加了数据集相关的功能")
 print("3. _align_features 函数期望嵌套结构都是 Features 对象，而不是普通 dict")
-print("4. 当遇到普通 dict 时，_align_features 会尝试递归处理，导致对 Value 对象调用 .items() 而失败")
+print("4. 当遇到普通 dict 时，_align_features 会尝试递归处理，导致对 Value 对象调用 .items() 而failed")
 print("5. 解决方案：将所有嵌套的普通 dict 转换为 Features 对象")
 

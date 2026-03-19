@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-扫描 parquet 文件，找出可能有特征类型问题的字段
+扫描 parquet file，找出可能有Feature type问题的字段
 """
 
 import sys
@@ -10,17 +10,17 @@ from datasets import load_dataset, Features
 def scan_fields(parquet_path):
     """扫描字段，找出可能有问题的字段"""
     print(f"\n{'='*80}")
-    print(f"扫描文件: {parquet_path}")
+    print(f"扫描file: {parquet_path}")
     print(f"{'='*80}\n")
     
     try:
         dataset = load_dataset("parquet", data_files=str(parquet_path))['train']
-        print(f"数据集大小: {len(dataset)}")
-        print(f"所有字段: {dataset.column_names}\n")
+        print(f"Dataset size: {len(dataset)}")
+        print(f"All fields: {dataset.column_names}\n")
         
         problematic_fields = []
         
-        print("检查每个字段的特征类型:\n")
+        print("检查每个字段的Feature type:\n")
         for col in dataset.column_names:
             if col not in dataset.features:
                 print(f"  ⚠️  {col}: 不在 features 中")
@@ -59,13 +59,13 @@ def scan_fields(parquet_path):
             for field, issue_type in problematic_fields:
                 print(f"  - {field}: {issue_type}")
         else:
-            print("✅ 未发现明显的问题字段")
+            print("✅ 未发现明显的Problematic fields")
         print(f"{'='*80}\n")
         
         return problematic_fields
         
     except Exception as e:
-        print(f"❌ 扫描失败: {type(e).__name__}: {e}")
+        print(f"❌ 扫描failed: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         return []
@@ -80,7 +80,7 @@ if __name__ == "__main__":
     
     parquet_path = Path(sys.argv[1])
     if not parquet_path.exists():
-        print(f"❌ 文件不存在: {parquet_path}")
+        print(f"❌ file不存在: {parquet_path}")
         sys.exit(1)
     
     problematic_fields = scan_fields(parquet_path)

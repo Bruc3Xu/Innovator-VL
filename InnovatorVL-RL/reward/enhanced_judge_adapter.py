@@ -202,7 +202,7 @@ class EnhancedJudgeRewardSystem(BaseRewardSystem):
                 self._executor.shutdown(wait=True, timeout=5)
 
 
-# 工厂函数
+# Factory function
 def create_enhanced_judge_reward(config: Optional[Dict] = None, use_enhanced: bool = True) -> EnhancedJudgeRewardSystem:
     """创建增强版奖励系统"""
     return EnhancedJudgeRewardSystem(config, use_enhanced)

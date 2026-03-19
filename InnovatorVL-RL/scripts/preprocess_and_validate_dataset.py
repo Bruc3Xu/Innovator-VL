@@ -3,7 +3,7 @@
 完整预处理脚本：不仅统一 features 类型，还统一数据内容
 - 统一 images 字段类型
 - 确保每个样本的 <image> token 数量与图像数量匹配
-- 验证数据一致性
+- Validating data一致性
 """
 
 import sys
@@ -51,7 +51,7 @@ def preprocess_dataset(input_path, output_path=None):
     """完整预处理数据集"""
     input_path = Path(input_path)
     if not input_path.exists():
-        print(f"❌ 文件不存在: {input_path}")
+        print(f"❌ file不存在: {input_path}")
         return False
     
     if output_path is None:
@@ -60,19 +60,19 @@ def preprocess_dataset(input_path, output_path=None):
         output_path = Path(output_path)
     
     print(f"\n{'='*80}")
-    print(f"预处理文件: {input_path}")
-    print(f"输出文件: {output_path}")
+    print(f"预处理file: {input_path}")
+    print(f"输出file: {output_path}")
     print(f"{'='*80}\n")
     
     try:
-        # 1. 加载数据集
-        print("1. 加载数据集...")
+        # 1. Loading dataset
+        print("1. Loading dataset...")
         dataset = load_dataset("parquet", data_files=str(input_path))['train']
-        print(f"   数据集大小: {len(dataset)}")
+        print(f"   Dataset size: {len(dataset)}")
         print(f"   列名: {dataset.column_names}\n")
         
-        # 2. 移除问题字段
-        print("2. 移除问题字段...")
+        # 2. 移除Problematic fields
+        print("2. 移除Problematic fields...")
         columns_to_keep = [col for col in dataset.column_names if col not in FIELDS_TO_REMOVE]
         removed_fields = [col for col in dataset.column_names if col in FIELDS_TO_REMOVE]
         if removed_fields:
@@ -103,14 +103,14 @@ def preprocess_dataset(input_path, output_path=None):
                 
                 try:
                     dataset = dataset.cast(new_features)
-                    print(f"   ✅ 转换成功")
+                    print(f"   ✅ 转换success")
                 except Exception as e:
-                    print(f"   ⚠️  cast 失败: {e}")
+                    print(f"   ⚠️  cast failed: {e}")
                     print(f"   使用 from_dict 重新创建...")
                     data_dict = {col: [dataset[j][col] for j in range(len(dataset))] 
                                 for col in dataset.column_names}
                     dataset = Dataset.from_dict(data_dict, features=new_features)
-                    print(f"   ✅ 通过 from_dict 成功转换")
+                    print(f"   ✅ 通过 from_dict success转换")
             else:
                 print(f"   ✓ 已经是正确的类型")
         
@@ -176,17 +176,17 @@ def preprocess_dataset(input_path, output_path=None):
         return True
         
     except Exception as e:
-        print(f"❌ 处理失败: {type(e).__name__}: {e}")
+        print(f"❌ 处理failed: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def main():
     parser = argparse.ArgumentParser(description="完整预处理数据集：统一格式并验证一致性")
-    parser.add_argument("input", help="输入的 parquet 文件路径或目录")
-    parser.add_argument("-o", "--output", help="输出文件路径或目录（可选）")
-    parser.add_argument("-r", "--recursive", action="store_true", help="递归处理目录中的所有 parquet 文件")
-    parser.add_argument("--overwrite", action="store_true", help="覆盖原文件")
+    parser.add_argument("input", help="输入的 parquet file路径或目录")
+    parser.add_argument("-o", "--output", help="输出file路径或目录（可选）")
+    parser.add_argument("-r", "--recursive", action="store_true", help="递归处理目录中的所有 parquet file")
+    parser.add_argument("--overwrite", action="store_true", help="覆盖原file")
     
     args = parser.parse_args()
     
@@ -204,13 +204,13 @@ def main():
             parquet_files = list(input_path.glob("*.parquet"))
         
         if not parquet_files:
-            print(f"❌ 未找到 parquet 文件")
+            print(f"❌ 未找到 parquet file")
             return
         
-        print(f"找到 {len(parquet_files)} 个 parquet 文件\n")
+        print(f"找到 {len(parquet_files)} 个 parquet file\n")
         
         success_count = 0
-        for parquet_file in tqdm(parquet_files, desc="处理文件"):
+        for parquet_file in tqdm(parquet_files, desc="处理file"):
             if args.overwrite:
                 if preprocess_dataset(parquet_file, parquet_file):
                     success_count += 1
@@ -227,7 +227,7 @@ def main():
                         success_count += 1
         
         print(f"\n{'='*80}")
-        print(f"处理完成: {success_count}/{len(parquet_files)} 个文件成功")
+        print(f"处理完成: {success_count}/{len(parquet_files)} 个filesuccess")
         print(f"{'='*80}")
     else:
         print(f"❌ 无效的输入路径: {input_path}")

@@ -186,7 +186,7 @@ def main(args):
 
     data_generator = cycle_dataloader(train_dataloader)
     
-    # 添加日志记录器用于调试
+    # Add logger for debugging
     import logging
     debug_logger = logging.getLogger("DebugTraining")
     debug_logger.setLevel(logging.INFO)
@@ -205,7 +205,7 @@ def main(args):
             steps_per_epoch=steps_per_epoch,
         )
         
-        # DEBUG: 打印当前步骤开始
+        # DEBUG: Print current step start
         debug_logger.info(f"=== Starting Step {global_step} (Epoch {epoch}, Step {step}) ===")
 
         with stats_tracker.record_timing("rollout"):
@@ -224,7 +224,7 @@ def main(args):
                         workflow=workflow,
                         should_accept=lambda sample: True,
                     )
-                # DEBUG: 打印 batch 信息
+                # DEBUG: Print batch information
                 if batch is not None:
                     debug_logger.info(f"Step {global_step}: Batch prepared. Keys: {list(batch.keys()) if isinstance(batch, dict) else 'N/A'}")
                     if isinstance(batch, dict) and "input_ids" in batch:

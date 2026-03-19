@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-诊断脚本：检查 parquet 文件的特征类型问题
+诊断脚本：检查 parquet file的Feature type问题
 用于定位 AttributeError: 'Value' object has no attribute 'items' 错误
 """
 
@@ -9,21 +9,21 @@ from pathlib import Path
 from datasets import load_dataset, Features, Image as DatasetImage, Value, Sequence
 
 def check_dataset_features(parquet_path):
-    """检查数据集的特征类型"""
+    """检查数据集的Feature type"""
     print(f"\n{'='*80}")
-    print(f"检查文件: {parquet_path}")
+    print(f"检查file: {parquet_path}")
     print(f"{'='*80}\n")
     
     try:
-        # 加载数据集
+        # Loading dataset
         dataset = load_dataset("parquet", data_files=str(parquet_path))['train']
         
-        print(f"数据集大小: {len(dataset)}")
+        print(f"Dataset size: {len(dataset)}")
         print(f"列名: {dataset.column_names}\n")
         
         # 检查 features 类型
         print("=" * 80)
-        print("特征类型检查")
+        print("Feature type检查")
         print("=" * 80)
         print(f"features 类型: {type(dataset.features)}")
         print(f"是否为 Features 对象: {isinstance(dataset.features, Features)}")
@@ -36,9 +36,9 @@ def check_dataset_features(parquet_path):
         
         print("✅ features 是 Features 对象\n")
         
-        # 检查每个字段的特征类型
+        # 检查每个字段的Feature type
         print("=" * 80)
-        print("各字段特征类型详情")
+        print("各字段Feature type详情")
         print("=" * 80)
         
         for col_name in dataset.column_names:
@@ -48,35 +48,35 @@ def check_dataset_features(parquet_path):
                 print(f"  类型: {type(feature)}")
                 print(f"  值: {feature}")
                 
-                # 特别检查 images 字段
+                # Special check images 字段
                 if col_name == "images":
-                    print(f"  ⚠️  这是 images 字段，需要特别检查")
+                    print(f"  ⚠️  这是 images 字段，需要Special check")
                     if isinstance(feature, Sequence):
                         print(f"    是 Sequence 类型")
                         if hasattr(feature, "feature"):
                             inner_feature = feature.feature
-                            print(f"    内部特征类型: {type(inner_feature)}")
+                            print(f"    内部Feature type: {type(inner_feature)}")
                             print(f"    内部特征值: {inner_feature}")
                             
                             if isinstance(inner_feature, DatasetImage):
-                                print(f"    ✅ 内部是 Image 类型（正确）")
+                                print(f"    ✅ Internal is Image type (correct)")
                             elif hasattr(inner_feature, "__contains__"):
-                                print(f"    ⚠️  内部是字典类型（可能是问题所在）")
+                                print(f"    ⚠️  Internal is字典类型（may be the problem）")
                                 if hasattr(inner_feature, "keys"):
                                     try:
                                         keys = list(inner_feature.keys())
-                                        print(f"    字典键: {keys}")
+                                        print(f"    Dict keys: {keys}")
                                     except Exception:
                                         pass
                             else:
-                                print(f"    ⚠️  未知的内部特征类型")
+                                print(f"    ⚠️  Unknown internal feature type")
                     else:
                         print(f"    ⚠️  不是 Sequence 类型")
                 
-                # 特别检查字典类型的字段（如 reward_model, vanilla_prompt）
+                # Special checkDict type fields（如 reward_model, vanilla_prompt）
                 if isinstance(feature, dict):
-                    print(f"  ⚠️  这是字典类型的特征（需要特别检查）")
-                    print(f"  字典键: {list(feature.keys())}")
+                    print(f"  ⚠️  这是字典类型的特征（需要Special check）")
+                    print(f"  Dict keys: {list(feature.keys())}")
                     for k, v in feature.items():
                         print(f"    {k}: {type(v)} = {v}")
                         # 检查值是否是 Value 对象
@@ -94,8 +94,8 @@ def check_dataset_features(parquet_path):
                 if hasattr(feature, "feature"):
                     inner = feature.feature
                     if isinstance(inner, dict):
-                        print(f"  ⚠️  List 内部是字典类型")
-                        print(f"  内部字典键: {list(inner.keys())}")
+                        print(f"  ⚠️  List Internal is字典类型")
+                        print(f"  内部Dict keys: {list(inner.keys())}")
                         for k, v in inner.items():
                             print(f"    {k}: {type(v)} = {v}")
                             from datasets import Value
@@ -117,16 +117,16 @@ def check_dataset_features(parquet_path):
                     if len(value) > 0:
                         print(f"  第一个元素类型: {type(value[0])}")
                         if isinstance(value[0], dict):
-                            print(f"  第一个元素字典键: {list(value[0].keys())}")
+                            print(f"  第一个元素Dict keys: {list(value[0].keys())}")
                 elif isinstance(value, dict):
-                    print(f"  字典键: {list(value.keys())}")
+                    print(f"  Dict keys: {list(value.keys())}")
                     # 详细检查字典的每个值
                     for k, v in value.items():
                         print(f"    {k}: {type(v)} = {str(v)[:50]}")
                 else:
                     print(f"  值预览: {str(value)[:100]}")
         
-        # 特别检查嵌套字段的特征结构
+        # Special check嵌套字段的特征结构
         print("\n" + "=" * 80)
         print("嵌套字段特征结构详细检查")
         print("=" * 80)
@@ -134,13 +134,13 @@ def check_dataset_features(parquet_path):
             if col_name in dataset.features:
                 feature = dataset.features[col_name]
                 print(f"\n字段: {col_name}")
-                print(f"  特征类型: {type(feature)}")
+                print(f"  Feature type: {type(feature)}")
                 print(f"  特征值: {feature}")
                 
                 # 检查是否是嵌套的字典结构
                 if isinstance(feature, dict):
-                    print(f"  ⚠️  这是字典类型的特征（可能是问题所在）")
-                    print(f"  字典键: {list(feature.keys())}")
+                    print(f"  ⚠️  这是字典类型的特征（may be the problem）")
+                    print(f"  Dict keys: {list(feature.keys())}")
                     for k, v in feature.items():
                         print(f"    {k}: {type(v)} = {v}")
                         # 检查值是否是 Value 对象
@@ -152,8 +152,8 @@ def check_dataset_features(parquet_path):
                 if hasattr(feature, "feature"):
                     inner = feature.feature
                     if isinstance(inner, dict):
-                        print(f"  ⚠️  List 内部是字典类型")
-                        print(f"  内部字典键: {list(inner.keys())}")
+                        print(f"  ⚠️  List Internal is字典类型")
+                        print(f"  内部Dict keys: {list(inner.keys())}")
                         for k, v in inner.items():
                             print(f"    {k}: {type(v)} = {v}")
                             from datasets import Value
@@ -175,7 +175,7 @@ def check_dataset_features(parquet_path):
                 inner_feature = img_feature.feature
                 if not isinstance(inner_feature, DatasetImage):
                     needs_conversion = True
-                    print(f"⚠️  需要转换: 内部特征类型是 {type(inner_feature)}，不是 Image 类型")
+                    print(f"⚠️  需要转换: 内部Feature type是 {type(inner_feature)}，不是 Image 类型")
             else:
                 needs_conversion = True
                 print(f"⚠️  需要转换: images 特征结构异常")
@@ -193,16 +193,16 @@ def check_dataset_features(parquet_path):
                     if isinstance(dataset_converted.features, Features) and "images" in dataset_converted.features:
                         converted_img_feature = dataset_converted.features["images"]
                         if hasattr(converted_img_feature, "feature") and isinstance(converted_img_feature.feature, DatasetImage):
-                            print("✅ 方法 1 成功: cast 转换成功！")
+                            print("✅ 方法 1 success: cast 转换success！")
                             dataset = dataset_converted
                         else:
-                            print(f"⚠️  方法 1 部分成功: cast 完成但类型仍不正确: {converted_img_feature}")
+                            print(f"⚠️  方法 1 部分success: cast 完成但类型仍不正确: {converted_img_feature}")
                             needs_conversion = True  # 继续尝试方法 2
                     else:
-                        print("⚠️  方法 1 部分成功: cast 完成但 features 结构异常")
+                        print("⚠️  方法 1 部分success: cast 完成但 features 结构异常")
                         needs_conversion = True  # 继续尝试方法 2
                 except Exception as e:
-                    print(f"❌ 方法 1 失败: {type(e).__name__}: {e}")
+                    print(f"❌ 方法 1 failed: {type(e).__name__}: {e}")
                     needs_conversion = True  # 继续尝试方法 2
                 
                 if needs_conversion:
@@ -214,7 +214,7 @@ def check_dataset_features(parquet_path):
                         temp_features = Features(temp_features_dict)
                         dataset_temp = dataset.cast(temp_features)
                         
-                        # 重新添加 images 字段，使用正确的特征类型
+                        # 重新添加 images 字段，使用正确的Feature type
                         data_dict = {col: [dataset_temp[j][col] for j in range(len(dataset_temp))] for col in dataset_temp.column_names}
                         # 获取原始 images 数据
                         original_images = [dataset[j]["images"] for j in range(len(dataset))]
@@ -228,14 +228,14 @@ def check_dataset_features(parquet_path):
                         if isinstance(dataset.features, Features) and "images" in dataset.features:
                             converted_img_feature = dataset.features["images"]
                             if hasattr(converted_img_feature, "feature") and isinstance(converted_img_feature.feature, DatasetImage):
-                                print("✅ 方法 2 成功: Workaround 转换成功！")
+                                print("✅ 方法 2 success: Workaround 转换success！")
                                 needs_conversion = False
                             else:
-                                print(f"❌ 方法 2 失败: 转换后类型仍不正确: {converted_img_feature}")
+                                print(f"❌ 方法 2 failed: 转换后类型仍不正确: {converted_img_feature}")
                         else:
-                            print("❌ 方法 2 失败: features 结构异常")
+                            print("❌ 方法 2 failed: features 结构异常")
                     except Exception as e:
-                        print(f"❌ 方法 2 失败: {type(e).__name__}: {e}")
+                        print(f"❌ 方法 2 failed: {type(e).__name__}: {e}")
                         import traceback
                         traceback.print_exc()
                         return False
@@ -294,11 +294,11 @@ def check_dataset_features(parquet_path):
             print("\n尝试连接数据集...")
             print(f"原始数据集 images 特征: {dataset.features.get('images', 'N/A')}")
             combined = concatenate_datasets([test_dataset, dataset])
-            print("✅ 连接成功！")
-            print(f"合并后数据集大小: {len(combined)}")
+            print("✅ 连接success！")
+            print(f"合并后Dataset size: {len(combined)}")
             print(f"合并后 images 特征: {combined.features.get('images', 'N/A')}")
         except Exception as e:
-            print(f"❌ 连接失败: {type(e).__name__}: {e}")
+            print(f"❌ 连接failed: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -306,7 +306,7 @@ def check_dataset_features(parquet_path):
         return True
         
     except Exception as e:
-        print(f"❌ 加载数据集时出错: {type(e).__name__}: {e}")
+        print(f"❌ Loading dataset时出错: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -321,7 +321,7 @@ if __name__ == "__main__":
     
     parquet_path = Path(sys.argv[1])
     if not parquet_path.exists():
-        print(f"❌ 文件不存在: {parquet_path}")
+        print(f"❌ file不存在: {parquet_path}")
         sys.exit(1)
     
     success = check_dataset_features(parquet_path)

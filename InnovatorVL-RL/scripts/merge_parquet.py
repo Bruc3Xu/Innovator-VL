@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-合并目录下所有parquet文件到一个parquet文件
+合并目录下所有parquetfile到一个parquetfile
 """
 import os
 import glob
@@ -13,27 +13,27 @@ import pyarrow as pa
 
 def merge_parquet_files(input_dir, output_file):
     """
-    递归查找目录下所有parquet文件并合并
+    递归查找目录下所有parquetfile并合并
     
     Args:
         input_dir: 输入目录路径
-        output_file: 输出parquet文件路径
+        output_file: 输出parquetfile路径
     """
-    # 递归查找所有parquet文件
+    # 递归查找所有parquetfile
     parquet_files = sorted(glob.glob(os.path.join(input_dir, "**", "*.parquet"), recursive=True))
     
     if not parquet_files:
-        print(f"❌ 在 {input_dir} 中未找到任何parquet文件")
+        print(f"❌ 在 {input_dir} 中未找到任何parquetfile")
         return
     
-    print(f"📁 找到 {len(parquet_files)} 个parquet文件:")
+    print(f"📁 找到 {len(parquet_files)} 个parquetfile:")
     for f in parquet_files[:5]:
         print(f"   - {f}")
     if len(parquet_files) > 5:
-        print(f"   ... 还有 {len(parquet_files) - 5} 个文件")
+        print(f"   ... 还有 {len(parquet_files) - 5} 个file")
     
     # 加载所有数据集
-    print(f"\n📥 正在加载数据集...")
+    print(f"\n📥 正在Loading dataset...")
     dataset_list = []
     for parquet_file in tqdm(parquet_files, desc="Loading"):
         try:
@@ -41,22 +41,22 @@ def merge_parquet_files(input_dir, output_file):
             try:
                 dataset = load_dataset("parquet", data_files=parquet_file)['train']
             except (Exception, TypeError, ValueError) as e1:
-                # 如果失败，使用 pyarrow 读取并手动处理
-                print(f"   ⚠️  datasets 加载失败，使用 pyarrow 手动处理: {str(e1)[:100]}")
+                # 如果failed，使用 pyarrow 读取并手动处理
+                print(f"   ⚠️  datasets 加载failed，使用 pyarrow 手动处理: {str(e1)[:100]}")
                 try:
                     # 使用 pyarrow 读取（可能需要特殊处理 PIL Image）
-                    # 尝试直接读取，如果失败则使用其他方法
+                    # 尝试直接读取，如果failed则使用其他方法
                     try:
                         table = pq.read_table(parquet_file)
                     except Exception as read_err:
-                        print(f"   ⚠️  pyarrow 读取失败: {read_err}")
+                        print(f"   ⚠️  pyarrow 读取failed: {read_err}")
                         raise e1  # 重新抛出原始错误
                     
                     # 读取所有数据为 Python 列表
                     try:
                         data = table.to_pylist()
                     except Exception as pylist_err:
-                        print(f"   ⚠️  转换为 Python 列表失败: {pylist_err}")
+                        print(f"   ⚠️  转换为 Python 列表failed: {pylist_err}")
                         # 尝试逐行读取
                         data = []
                         for batch in table.to_batches():
@@ -85,7 +85,7 @@ def merge_parquet_files(input_dir, output_file):
                                 img.save(img_bytes, format="PNG")
                                 return {"bytes": img_bytes.getvalue(), "path": None}
                             except Exception as conv_err:
-                                print(f"   ⚠️  图像转换失败: {conv_err}")
+                                print(f"   ⚠️  图像转换failed: {conv_err}")
                                 return {"bytes": None, "path": None}
                         else:
                             # 未知格式，尝试检查
@@ -153,7 +153,7 @@ def merge_parquet_files(input_dir, output_file):
                             num_proc=1
                         )
                 except Exception as e2:
-                    print(f"   ⚠️  pyarrow 处理也失败: {e2}")
+                    print(f"   ⚠️  pyarrow 处理也failed: {e2}")
                     import traceback
                     traceback.print_exc()
                     continue
@@ -196,10 +196,10 @@ def merge_parquet_files(input_dir, output_file):
             continue
     
     if not dataset_list:
-        print("❌ 没有成功加载任何数据集")
+        print("❌ 没有success加载任何数据集")
         return
     
-    print(f"\n✅ 成功加载 {len(dataset_list)} 个数据集")
+    print(f"\n✅ success加载 {len(dataset_list)} 个数据集")
     
     # 对齐列（处理可能的列不一致问题）
     print(f"\n🔧 对齐列结构...")
@@ -221,7 +221,7 @@ def merge_parquet_files(input_dir, output_file):
         for ds in tqdm(dataset_list, desc="Aligning")
     ]
     
-    # 统一特征类型（处理类型不匹配问题）
+    # 统一Feature type（处理类型不匹配问题）
     if dataset_list:
         target_features = dataset_list[0].features
         new_list = []
@@ -229,7 +229,7 @@ def merge_parquet_files(input_dir, output_file):
             try:
                 ds = ds.cast(target_features)
             except Exception as e:
-                print(f"⚠️  转换特征类型时出错（继续处理）: {e}")
+                print(f"⚠️  转换Feature type时出错（继续处理）: {e}")
             new_list.append(ds)
         dataset_list = new_list
     
@@ -238,22 +238,22 @@ def merge_parquet_files(input_dir, output_file):
     merged_dataset = concatenate_datasets(dataset_list)
     
     print(f"\n📊 合并后的数据集统计:")
-    print(f"   总样本数: {len(merged_dataset)}")
+    print(f"   总Sample count: {len(merged_dataset)}")
     print(f"   列数: {len(merged_dataset.column_names)}")
     print(f"   列名: {merged_dataset.column_names}")
     
-    # 保存到parquet文件
+    # 保存到parquetfile
     print(f"\n💾 保存到 {output_file}...")
     merged_dataset.to_parquet(output_file)
     
     print(f"\n✅ 完成! 合并后的数据已保存到: {output_file}")
-    print(f"   文件大小: {os.path.getsize(output_file) / (1024**3):.2f} GB")
+    print(f"   file大小: {os.path.getsize(output_file) / (1024**3):.2f} GB")
 
 if __name__ == "__main__":
     import sys
     
     if len(sys.argv) < 3:
-        print("用法: python merge_parquet.py <输入目录> <输出文件路径>")
+        print("用法: python merge_parquet.py <输入目录> <输出file路径>")
         print("示例: python merge_parquet.py /path/to/input /path/to/output.parquet")
         sys.exit(1)
     

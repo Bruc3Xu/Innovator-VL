@@ -20,18 +20,18 @@ logger = logging.getLogger("EnhancedJudge")
 @dataclass
 class ScoringConfig:
     """Configuration for different scoring weights based on prompt type"""
-    format_weight: float = 0.10      # 格式分权重
-    thinking_weight: float = 0.25    # 思考质量权重
-    answer_weight: float = 0.65      # 答案正确性权重
-    enforces_format: bool = True     # 是否强制格式要求
-    uses_think_tag: bool = True      # 是否使用思考标签
+    format_weight: float = 0.10      # Format score weight
+    thinking_weight: float = 0.25    # Thinking quality weight
+    answer_weight: float = 0.65      # Answer correctness weight
+    enforces_format: bool = True     # Whether to enforce format requirement
+    uses_think_tag: bool = True      # Whether to use thinking tags
 
 
 class AnswerExtractor:
     """Enhanced answer extractor with multiple fallback strategies"""
 
     def __init__(self):
-        # 编译常用的正则表达式
+        # Compile commonly used regex patterns
         self.think_pattern = re.compile(r'<think>(.*?)</think>', re.DOTALL)
         self.answer_pattern = re.compile(r'<answer>(.*?)</answer>', re.DOTALL)
         self.boxed_pattern = re.compile(r'\boxed{(.*?)}', re.DOTALL)
@@ -54,9 +54,9 @@ class AnswerExtractor:
         return thinking, answer
 
     def extract_answer(self, completion: str) -> str:
-        """多层答案提取（借鉴LLM judge的设计）"""
+        """Multi-level answer extraction (inspired by LLM judge design)"""
 
-        # Level 1: <answer>标签（新格式）
+        # Level 1: <answer> tag (new format)
         answer_match = self.answer_pattern.search(completion)
         if answer_match:
             return answer_match.group(1).strip()
@@ -66,23 +66,23 @@ class AnswerExtractor:
         if boxed_matches:
             return boxed_matches[-1].strip()
 
-        # Level 3: MCQ格式（选择题）
+        # Level 3: MCQ format (multiple choice)
         mcq_answer = self._extract_mcq_answer(completion)
         if mcq_answer:
             return mcq_answer
 
-        # Level 4: 回答末尾的数字/表达式
+        # Level 4: Number/expression at end of answer
         final_answer = self._extract_final_answer(completion)
         if final_answer:
             return final_answer
 
-        # Level 5: 整个回答的最后尝试
+        # Level 5: Last attempt of entire answer
         lines = completion.strip().split('\n')
         for line in reversed(lines):
             line = line.strip()
             if line:
-                # 去掉常见的前缀
-                prefixes = ["answer:", "the answer is:", "答案是:", "答案:"]
+                # Remove common prefixes
+                prefixes = ["answer:", "the answer is:", "answer is:", "answer:"]
                 for prefix in prefixes:
                     if line.lower().startswith(prefix):
                         return line[len(prefix):].strip()
@@ -92,7 +92,7 @@ class AnswerExtractor:
 
     def _extract_mcq_answer(self, text: str) -> Optional[str]:
         """从回答中提取选择题答案"""
-        # 更智能的选择题答案提取
+        # Smarter multiple choice answer extraction
         answer_phrases = [
             "answer is", "答案是", "the answer", "正确答案是",
             "correct answer is", "选项", "choice is", "答案是"
@@ -104,7 +104,7 @@ class AnswerExtractor:
             if not line:
                 continue
 
-            # 检查行尾的选择题格式
+            # Check multiple choice format at end of line
             for c in "ABCDEFGH":
                 patterns = [
                     f" {c}.", f"({c})", f"{c})", f"{c} ",
@@ -113,11 +113,11 @@ class AnswerExtractor:
                 if any(line.endswith(pattern) for pattern in patterns):
                     return c
 
-            # 检查常见答案句式
+            # Check common answer patterns
             for phrase in answer_phrases:
                 idx = line.lower().find(phrase)
                 if idx != -1:
-                    # 在短语后面找选择题字母
+                    # Look for multiple choice letter after phrase
                     after_phrase = line[idx + len(phrase):].strip()
                     match = self.mcq_pattern.search(after_phrase)
                     if match:
@@ -129,19 +129,19 @@ class AnswerExtractor:
         """从文本末尾提取答案（数字或简单表达式）"""
         lines = text.strip().split('\n')
 
-        for line in reversed(lines[-3:]):  # 只看最后3行
+        for line in reversed(lines[-3:]):  # Only look at last 3 lines
             line = line.strip()
             if not line:
                 continue
 
-            # 检查是否是简单数字
+            # Check if simple number
             num_match = self.number_pattern.search(line)
             if num_match:
-                # 确保这个数字是独立的答案，而不是段落的一部分
-                if len(line.split()) <= 5:  # 防止在段落中
+                # Ensure this number is standalone answer, not part of paragraph
+                if len(line.split()) <= 5:  # Prevent in paragraph
                     return num_match.group(0)
 
-            # 检查数学表达式
+            # Check mathematical expression
             if any(op in line for op in ["+=", "-=", "*=", "/=", "=="]):
                 parts = line.split("=")
                 if len(parts) >= 2:
@@ -151,7 +151,7 @@ class AnswerExtractor:
 
 
 class ThinkingEvaluator:
-    """评估思考过程的质量"""
+    """Evaluate thinking process quality"""
 
     def evaluate(self, thinking: str, prompt: str) -> Dict[str, float]:
         if not thinking or len(thinking.strip()) < 10:
@@ -168,7 +168,7 @@ class ThinkingEvaluator:
         elif word_count < 200:
             scores["length"] = 1.0
         else:
-            scores["length"] = 0.9  # 过长扣分
+            scores["length"] = 0.9  # Deduct points for too long
 
         # 2. 逻辑结构检查
         logic_signals = [
@@ -203,16 +203,16 @@ class ThinkingEvaluator:
 
 
 class AnswerValidator:
-    """答案正确性验证（多层防护）"""
+    """Answer correctness validation (multi-layer protection)"""
 
     def validate(self, predicted: str, ground_truth: str, answer_type: str) -> Dict[str, bool]:
         """多层级验证策略"""
 
-        # Level 1: 严格字符串匹配（忽略大小写和空白）
+        # Level 1: Strict string matching (ignore case and whitespace)
         if predicted.strip().lower() == ground_truth.strip().lower():
             return {"correct": True, "method": "exact_match", "confidence": 1.0}
 
-        # Level 2: 数学验证（对于数学表达式）
+        # Level 2: Math verification (for mathematical expressions)
         if answer_type in ["MATH_EXPRESSIONS", "NUMBER"]:
             try:
                 # 使用math_verify进行数学等价性验证
@@ -232,23 +232,23 @@ class AnswerValidator:
             except Exception:
                 pass
 
-        # Level 3: 选择题验证
+        # Level 3: Multiple choice validation
         if answer_type == "MULTIPLE_CHOICE":
-            # 规范化选择题答案
+            # Normalize multiple choice answer
             pred_letter = self._normalize_choice(predicted)
             truth_letter = self._normalize_choice(ground_truth)
 
             if pred_letter and truth_letter and pred_letter == truth_letter:
                 return {"correct": True, "method": "choice_match", "confidence": 0.9}
 
-        # Level 4: 语义包含验证
+        # Level 4: Semantic containment verification
         if ground_truth.lower() in predicted.lower() and len(ground_truth) > 1:
             return {"correct": True, "method": "contained", "confidence": 0.7}
 
-        # Level 5: 数值验证（对于数字答案）
+        # Level 5: Numerical verification (for numerical answers)
         if answer_type in ["NUMBER", "MATH_EXPRESSIONS"]:
             try:
-                # 提取并比较数值
+                # Extract and compare numerical values
                 pred_num = float(self._extract_number(predicted))
                 truth_num = float(self._extract_number(ground_truth))
                 if abs(pred_num - truth_num) < 1e-6:
@@ -260,17 +260,17 @@ class AnswerValidator:
 
     def _normalize_choice(self, text: str) -> Optional[str]:
         """标准化选择题答案"""
-        # 清理左右空格和标点
+        # Strip whitespace and punctuation
         text = text.strip().strip(".,!?;:")
 
-        # 检查是否是单个字母
+        # Check if single letter
         if len(text) == 1 and text.isalpha() and text.upper() in "ABCDEFGH":
             return text.upper()
 
-        # 检查常见格式：(A), A., A: 等
+        # Check common formats: (A), A., A: etc.
         for c in "ABCDEFGH":
             if c in text.upper():
-                # 确保这是主要答案，而不是在解释中的例子
+                # Ensure this is the main answer, not an example in explanation
                 if text == c or text.count(c) == 1:
                     return c
 
@@ -278,15 +278,15 @@ class AnswerValidator:
 
     def _extract_number(self, text: str) -> Optional[str]:
         """提取数字"""
-        # 使用正则提取数字
+        # Use regex to extract number
         matches = re.findall(r"-?\d+(?:\.\d+)?", text)
         if matches:
-            return matches[-1]  # 返回最后一个数字
+            return matches[-1]  # Return last number
         return None
 
 
 class EnhancedJudgeModel:
-    """增强版Judge模型"""
+    """Enhanced Judge Model"""
 
     def __init__(self, config: Optional[Dict] = None):
         self.config = config or {}
@@ -294,16 +294,16 @@ class EnhancedJudgeModel:
         self.thinking_evaluator = ThinkingEvaluator()
         self.answer_validator = AnswerValidator()
 
-        # 根据prompt类型配置评分权重
+        # Configure scoring weight based on prompt type
         self.scoring_configs = {
-            "thinking": ScoringConfig(       # 需要思考链
+            "thinking": ScoringConfig(       # Needs thinking chain
                 format_weight=0.10,
                 thinking_weight=0.35,
                 answer_weight=0.55,
                 enforces_format=True,
                 uses_think_tag=True
             ),
-            "normal": ScoringConfig(         # 简单回答
+            "normal": ScoringConfig(         # Simple answer
                 format_weight=0.05,
                 thinking_weight=0.15,
                 answer_weight=0.80,
@@ -324,7 +324,7 @@ class EnhancedJudgeModel:
     ) -> Dict[str, float]:
         """评判单个样本"""
 
-        # 获取配置
+        # Get configuration
         config = self.scoring_configs.get(prompt_type, self.default_config)
 
         # 1. 提取两部分内容
@@ -414,7 +414,7 @@ class EnhancedJudgeModel:
         """.strip()
 
 
-# 工厂函数
+# Factory function
 async def create_enhanced_judge(config: Optional[Dict] = None) -> EnhancedJudgeModel:
     """创建增强Judge模型实例"""
     return EnhancedJudgeModel(config)

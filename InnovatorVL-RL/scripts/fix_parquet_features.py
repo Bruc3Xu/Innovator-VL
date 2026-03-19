@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-预处理脚本：修复 parquet 文件中的特征类型问题
+预处理脚本：修复 parquet file中的Feature type问题
 - 移除有问题的字段（训练时用不到）
 - 统一 images 字段类型（转换为 Sequence(Image(...))），必须统一才能 concatenate_datasets
 """
@@ -11,7 +11,7 @@ from pathlib import Path
 from datasets import load_dataset, Dataset, Features, Sequence, Image as DatasetImage
 from tqdm import tqdm
 
-# 需要移除的字段列表（这些字段在训练时用不到，且有特征类型问题）
+# 需要移除的字段列表（这些字段在训练时用不到，且有Feature type问题）
 # 注意：如果发现其他字段也有类似问题（普通 dict 或 List 包含普通 dict），
 # 可以添加到这个列表中
 FIELDS_TO_REMOVE = [
@@ -28,7 +28,7 @@ FIELDS_TO_REMOVE = [
 IMAGES_TARGET_TYPE = "image"  # 或 "dict"
 
 def fix_dataset_features(dataset):
-    """修复数据集的特征类型：移除问题字段，统一 images 字段类型"""
+    """修复数据集的Feature type：移除Problematic fields，统一 images 字段类型"""
     
     # 1. 移除有问题的字段
     columns_to_keep = [col for col in dataset.column_names if col not in FIELDS_TO_REMOVE]
@@ -79,15 +79,15 @@ def fix_dataset_features(dataset):
                 
                 try:
                     dataset = dataset.cast(new_features)
-                    print(f"  ✅ images 字段统一成功")
+                    print(f"  ✅ images 字段统一success")
                 except Exception as e:
-                    print(f"  ⚠️  cast 失败: {e}")
+                    print(f"  ⚠️  cast failed: {e}")
                     print(f"  使用 from_dict 重新创建...")
                     # 重新创建数据集
                     data_dict = {col: [dataset[j][col] for j in range(len(dataset))] 
                                 for col in dataset.column_names}
                     dataset = Dataset.from_dict(data_dict, features=new_features)
-                    print(f"  ✅ 通过 from_dict 成功统一 images 字段")
+                    print(f"  ✅ 通过 from_dict success统一 images 字段")
             else:
                 # 统一为 dict 格式
                 print(f"  统一 images 字段类型为 List({{'bytes': ..., 'path': ...}})...")
@@ -136,9 +136,9 @@ def fix_dataset_features(dataset):
                     data_dict["images"] = converted_images
                     
                     dataset = Dataset.from_dict(data_dict, features=new_features)
-                    print(f"  ✅ 通过 from_dict 成功统一 images 字段为 dict 格式")
+                    print(f"  ✅ 通过 from_dict success统一 images 字段为 dict 格式")
                 except Exception as e:
-                    print(f"  ❌ 转换失败: {e}")
+                    print(f"  ❌ 转换failed: {e}")
                     import traceback
                     traceback.print_exc()
                     raise
@@ -149,10 +149,10 @@ def fix_dataset_features(dataset):
 
 
 def process_parquet_file(input_path, output_path=None):
-    """处理单个 parquet 文件"""
+    """处理单个 parquet file"""
     input_path = Path(input_path)
     if not input_path.exists():
-        print(f"❌ 文件不存在: {input_path}")
+        print(f"❌ file不存在: {input_path}")
         return False
     
     if output_path is None:
@@ -162,15 +162,15 @@ def process_parquet_file(input_path, output_path=None):
         output_path = Path(output_path)
     
     print(f"\n{'='*80}")
-    print(f"处理文件: {input_path}")
-    print(f"输出文件: {output_path}")
+    print(f"处理file: {input_path}")
+    print(f"输出file: {output_path}")
     print(f"{'='*80}\n")
     
     try:
-        # 加载数据集
-        print("加载数据集...")
+        # Loading dataset
+        print("Loading dataset...")
         dataset = load_dataset("parquet", data_files=str(input_path))['train']
-        print(f"数据集大小: {len(dataset)}")
+        print(f"Dataset size: {len(dataset)}")
         print(f"列名: {dataset.column_names}\n")
         
         # 检查原始特征
@@ -199,32 +199,32 @@ def process_parquet_file(input_path, output_path=None):
         print(f"\n保存到: {output_path}")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         fixed_dataset.to_parquet(str(output_path))
-        print(f"✅ 成功保存修复后的数据集")
+        print(f"✅ success保存修复后的数据集")
         
         return True
         
     except Exception as e:
-        print(f"❌ 处理失败: {type(e).__name__}: {e}")
+        print(f"❌ 处理failed: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 
 def main():
-    parser = argparse.ArgumentParser(description="修复 parquet 文件中的特征类型问题")
-    parser.add_argument("input", help="输入的 parquet 文件路径或目录")
-    parser.add_argument("-o", "--output", help="输出文件路径或目录（可选，默认添加 _fixed 后缀）")
-    parser.add_argument("-r", "--recursive", action="store_true", help="递归处理目录中的所有 parquet 文件")
-    parser.add_argument("--overwrite", action="store_true", help="覆盖原文件（默认是创建新文件）")
+    parser = argparse.ArgumentParser(description="修复 parquet file中的Feature type问题")
+    parser.add_argument("input", help="输入的 parquet file路径或目录")
+    parser.add_argument("-o", "--output", help="输出file路径或目录（可选，默认添加 _fixed 后缀）")
+    parser.add_argument("-r", "--recursive", action="store_true", help="递归处理目录中的所有 parquet file")
+    parser.add_argument("--overwrite", action="store_true", help="覆盖原file（默认是创建新file）")
     
     args = parser.parse_args()
     
     input_path = Path(args.input)
     
     if input_path.is_file() and input_path.suffix == ".parquet":
-        # 处理单个文件
+        # 处理单个file
         if args.overwrite:
-            # 覆盖原文件
+            # 覆盖原file
             process_parquet_file(input_path, input_path)
         else:
             process_parquet_file(input_path, args.output)
@@ -236,19 +236,19 @@ def main():
             parquet_files = list(input_path.glob("*.parquet"))
         
         if not parquet_files:
-            print(f"❌ 在 {input_path} 中未找到 parquet 文件")
+            print(f"❌ 在 {input_path} 中未找到 parquet file")
             return
         
-        print(f"找到 {len(parquet_files)} 个 parquet 文件\n")
+        print(f"找到 {len(parquet_files)} 个 parquet file\n")
         
         success_count = 0
-        for parquet_file in tqdm(parquet_files, desc="处理文件"):
+        for parquet_file in tqdm(parquet_files, desc="处理file"):
             if args.overwrite:
-                # 覆盖原文件
+                # 覆盖原file
                 if process_parquet_file(parquet_file, parquet_file):
                     success_count += 1
             else:
-                # 创建新文件
+                # 创建新file
                 if args.output:
                     # 如果指定了输出目录，保持相对路径结构
                     output_dir = Path(args.output)
@@ -258,12 +258,12 @@ def main():
                     if process_parquet_file(parquet_file, output_file):
                         success_count += 1
                 else:
-                    # 默认在同目录创建 _fixed 文件
+                    # 默认在同目录创建 _fixed file
                     if process_parquet_file(parquet_file):
                         success_count += 1
         
         print(f"\n{'='*80}")
-        print(f"处理完成: {success_count}/{len(parquet_files)} 个文件成功")
+        print(f"处理完成: {success_count}/{len(parquet_files)} 个filesuccess")
         print(f"{'='*80}")
     else:
         print(f"❌ 无效的输入路径: {input_path}")

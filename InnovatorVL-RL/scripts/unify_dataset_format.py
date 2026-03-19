@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 统一数据集格式脚本
-将所有数据集文件统一为相同的格式，确保每个字段的类型都一致
+将所有数据集file统一为相同的格式，确保每个字段的类型都一致
 这样可以避免在 concatenate_datasets 时出现类型不匹配的问题
 """
 
@@ -47,7 +47,7 @@ STANDARD_FEATURES = {
 
 def analyze_all_datasets(input_paths: List[str]) -> Dict[str, Any]:
     """
-    分析所有数据集，收集所有字段和它们的类型
+    分析所有数据集，收集All fields和它们的类型
     返回：字段名 -> 所有出现过的类型的集合
     """
     print("=" * 80)
@@ -68,7 +68,7 @@ def analyze_all_datasets(input_paths: List[str]) -> Dict[str, Any]:
         elif path.endswith((".parquet", ".json")):
             expanded_paths.append(path)
     
-    print(f"找到 {len(expanded_paths)} 个数据集文件")
+    print(f"找到 {len(expanded_paths)} 个数据集file")
     
     for path in tqdm(expanded_paths, desc="分析数据集"):
         try:
@@ -87,7 +87,7 @@ def analyze_all_datasets(input_paths: List[str]) -> Dict[str, Any]:
                 field_type_str = str(dataset.features[field_name])
                 field_types[field_name].add(field_type_str)
         except Exception as e:
-            print(f"⚠️  跳过文件 {path}: {e}")
+            print(f"⚠️  跳过file {path}: {e}")
             continue
     
     print(f"\n发现 {len(all_fields)} 个唯一字段:")
@@ -106,10 +106,10 @@ def analyze_all_datasets(input_paths: List[str]) -> Dict[str, Any]:
 
 def determine_standard_features(all_fields: Set[str], field_types: Dict[str, Set[str]]) -> Features:
     """
-    根据分析结果确定标准特征类型
+    根据分析结果确定标准Feature type
     """
     print("\n" + "=" * 80)
-    print("步骤 2: 确定标准特征类型...")
+    print("步骤 2: 确定标准Feature type...")
     print("=" * 80)
     
     standard_features_dict = {}
@@ -180,7 +180,7 @@ def convert_images_to_standard_format(images: Any) -> List[Any]:
                     print(f"⚠️  无法加载图像路径 {img['path']}: {e}")
                     continue
         elif isinstance(img, str):
-            # 文件路径
+            # file路径
             try:
                 pil_img = Image.open(img)
                 if pil_img.mode in ("CMYK", "YCbCr", "LAB", "HSV", "P"):
@@ -256,17 +256,17 @@ def normalize_sample(sample: Dict[str, Any], standard_features: Features) -> Dic
 
 def process_dataset_file(input_path: str, standard_features: Features, output_path: str = None) -> Dataset:
     """
-    处理单个数据集文件，转换为标准格式
+    处理单个数据集file，转换为标准格式
     """
-    print(f"\n处理文件: {input_path}")
+    print(f"\n处理file: {input_path}")
     
-    # 加载数据集
+    # Loading dataset
     if input_path.endswith(".parquet"):
         dataset = load_dataset("parquet", data_files=input_path)['train']
     elif input_path.endswith(".json"):
         dataset = load_dataset("json", data_files=input_path)['train']
     else:
-        raise ValueError(f"不支持的文件格式: {input_path}")
+        raise ValueError(f"不支持的file格式: {input_path}")
     
     # 移除不需要的字段
     columns_to_keep = [col for col in dataset.column_names if col not in FIELDS_TO_REMOVE]
@@ -305,15 +305,15 @@ def process_dataset_file(input_path: str, standard_features: Features, output_pa
     # 设置标准特征
     try:
         dataset = dataset.cast(standard_features)
-        print(f"  ✅ 成功转换为标准格式")
+        print(f"  ✅ success转换为标准格式")
     except Exception as e:
-        print(f"  ⚠️  cast 失败: {e}")
+        print(f"  ⚠️  cast failed: {e}")
         print(f"  使用 from_dict 重新创建...")
         # 重新创建数据集
         data_dict = {col: [dataset[j][col] for j in range(len(dataset))] 
                      for col in dataset.column_names}
         dataset = Dataset.from_dict(data_dict, features=standard_features)
-        print(f"  ✅ 通过 from_dict 成功创建标准格式数据集")
+        print(f"  ✅ 通过 from_dict success创建标准格式数据集")
     
     # 保存（如果指定了输出路径）
     if output_path:
@@ -326,8 +326,8 @@ def process_dataset_file(input_path: str, standard_features: Features, output_pa
 def main():
     parser = argparse.ArgumentParser(description="统一数据集格式")
     parser.add_argument("input_paths", nargs="+", help="输入数据集路径（支持 glob 模式）")
-    parser.add_argument("--output_dir", type=str, help="输出目录（如果不指定，则覆盖原文件）")
-    parser.add_argument("--output_suffix", type=str, default="_unified", help="输出文件后缀")
+    parser.add_argument("--output_dir", type=str, help="输出目录（如果不指定，则覆盖原file）")
+    parser.add_argument("--output_suffix", type=str, default="_unified", help="输出file后缀")
     parser.add_argument("--dry-run", action="store_true", help="只分析，不实际转换")
     
     args = parser.parse_args()
@@ -339,30 +339,30 @@ def main():
     expanded_paths = analysis_result["expanded_paths"]
     
     if args.dry_run:
-        print("\n🔍 这是 dry-run 模式，不会实际转换文件")
+        print("\n🔍 这是 dry-run 模式，不会实际转换file")
         return
     
     # 步骤 2: 确定标准特征
     standard_features = determine_standard_features(all_fields, field_types)
     
-    # 步骤 3: 处理每个文件
+    # 步骤 3: 处理每个file
     print("\n" + "=" * 80)
-    print("步骤 3: 转换所有数据集文件...")
+    print("步骤 3: 转换所有数据集file...")
     print("=" * 80)
     
-    for input_path in tqdm(expanded_paths, desc="处理文件"):
+    for input_path in tqdm(expanded_paths, desc="处理file"):
         try:
             if args.output_dir:
                 # 保存到指定目录
                 input_name = Path(input_path).stem
                 output_path = os.path.join(args.output_dir, f"{input_name}{args.output_suffix}.parquet")
             else:
-                # 覆盖原文件（添加后缀）
+                # 覆盖原file（添加后缀）
                 output_path = str(Path(input_path).with_suffix("")) + args.output_suffix + ".parquet"
             
             process_dataset_file(input_path, standard_features, output_path)
         except Exception as e:
-            print(f"❌ 处理文件 {input_path} 时出错: {e}")
+            print(f"❌ 处理file {input_path} 时出错: {e}")
             import traceback
             traceback.print_exc()
             continue

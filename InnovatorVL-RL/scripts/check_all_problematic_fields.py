@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-统一检查脚本：扫描目录中所有 parquet 文件，找出所有有问题的字段
+统一检查脚本：扫描目录中所有 parquet file，找出所有有问题的字段
 """
 
 import sys
@@ -24,14 +24,14 @@ def check_field_type(feature, field_name=None):
         if isinstance(inner, dict) and not isinstance(inner, Features):
             # 跳过 images 字段的特殊结构（有 bytes 和 path 键）
             if field_name == "images" and hasattr(inner, "keys") and "bytes" in inner and "path" in inner:
-                # images 字段需要转换为 Image 类型，不算作"问题字段"（会被单独处理）
+                # images 字段需要转换为 Image 类型，不算作"Problematic fields"（会被单独处理）
                 return False, None, None
             return True, "List/Sequence 包含普通 dict", f"内部键: {list(inner.keys()) if hasattr(inner, 'keys') else 'N/A'}"
     
     return False, None, None
 
 def scan_file(parquet_path):
-    """扫描单个文件，返回有问题的字段列表"""
+    """扫描单个file，返回有问题的字段列表"""
     try:
         dataset = load_dataset("parquet", data_files=str(parquet_path))['train']
         problematic_fields = []
@@ -53,7 +53,7 @@ def scan_file(parquet_path):
         
         return problematic_fields, len(dataset)
     except Exception as e:
-        print(f"  ❌ 扫描失败: {type(e).__name__}: {e}")
+        print(f"  ❌ 扫描failed: {type(e).__name__}: {e}")
         return None, 0
 
 def main():
@@ -71,7 +71,7 @@ def main():
         print(f"❌ 路径不存在: {input_path}")
         sys.exit(1)
     
-    # 收集所有 parquet 文件
+    # 收集所有 parquet file
     if input_path.is_file() and input_path.suffix == ".parquet":
         parquet_files = [input_path]
     elif input_path.is_dir():
@@ -84,11 +84,11 @@ def main():
         sys.exit(1)
     
     if not parquet_files:
-        print(f"❌ 未找到 parquet 文件")
+        print(f"❌ 未找到 parquet file")
         sys.exit(1)
     
     print(f"\n{'='*80}")
-    print(f"扫描 {len(parquet_files)} 个 parquet 文件")
+    print(f"扫描 {len(parquet_files)} 个 parquet file")
     print(f"{'='*80}\n")
     
     # 统计所有有问题的字段
@@ -100,7 +100,7 @@ def main():
     
     file_results = []
     
-    for parquet_file in tqdm(parquet_files, desc="扫描文件"):
+    for parquet_file in tqdm(parquet_files, desc="扫描file"):
         problematic_fields, num_samples = scan_file(parquet_file)
         
         if problematic_fields is None:
@@ -112,7 +112,7 @@ def main():
             "num_samples": num_samples
         })
         
-        # 统计每个问题字段
+        # 统计每个Problematic fields
         for field_info in problematic_fields:
             field_name = field_info["field"]
             all_problematic_fields[field_name]["issue_types"].add(field_info["issue_type"])
@@ -125,15 +125,15 @@ def main():
     print(f"{'='*80}\n")
     
     for file_result in file_results:
-        print(f"文件: {file_result['file']}")
-        print(f"  样本数: {file_result['num_samples']}")
+        print(f"file: {file_result['file']}")
+        print(f"  Sample count: {file_result['num_samples']}")
         if file_result['problematic_fields']:
-            print(f"  问题字段:")
+            print(f"  Problematic fields:")
             for field_info in file_result['problematic_fields']:
                 print(f"    - {field_info['field']}: {field_info['issue_type']}")
                 print(f"      类型: {field_info['feature_type']}, {field_info['details']}")
         else:
-            print(f"  ✅ 无问题字段")
+            print(f"  ✅ 无Problematic fields")
         print()
     
     # 打印汇总统计
@@ -146,20 +146,20 @@ def main():
         for field_name, info in sorted(all_problematic_fields.items()):
             print(f"  {field_name}:")
             print(f"    问题类型: {', '.join(info['issue_types'])}")
-            print(f"    出现在 {len(info['files'])} 个文件中")
-            print(f"    总样本数: {info['total_samples']}")
-            print(f"    文件列表:")
+            print(f"    出现在 {len(info['files'])} 个file中")
+            print(f"    总Sample count: {info['total_samples']}")
+            print(f"    file列表:")
             for file_path in info['files'][:5]:  # 只显示前5个
                 print(f"      - {file_path}")
             if len(info['files']) > 5:
-                print(f"      ... 还有 {len(info['files']) - 5} 个文件")
+                print(f"      ... 还有 {len(info['files']) - 5} 个file")
             print()
         
         # 生成建议的 FIELDS_TO_REMOVE 列表
         print(f"\n{'='*80}")
         print("建议的 FIELDS_TO_REMOVE 列表")
         print(f"{'='*80}\n")
-        print("# 需要移除的字段列表（这些字段在训练时用不到，且有特征类型问题）")
+        print("# 需要移除的字段列表（这些字段在训练时用不到，且有Feature type问题）")
         print("FIELDS_TO_REMOVE = [")
         for field_name in sorted(all_problematic_fields.keys()):
             issue_types = all_problematic_fields[field_name]["issue_types"]
@@ -167,7 +167,7 @@ def main():
             print(f'    "{field_name}",      # {issue_desc}')
         print("]")
     else:
-        print("✅ 所有文件都没有发现明显的问题字段！")
+        print("✅ 所有file都没有发现明显的Problematic fields！")
         print("   注意：images 字段如果有问题会被单独处理，不在此列表中")
     
     print(f"\n{'='*80}\n")

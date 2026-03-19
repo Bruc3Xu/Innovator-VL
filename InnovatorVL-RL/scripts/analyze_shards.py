@@ -40,20 +40,20 @@ def analyze_shards(root_path, sample_size=5):
     print("\n" + "="*50)
     print("📊 字段出现频率汇总 (用于确定 standard_features):")
     for col, count in all_column_stats.items():
-        print(f"- {col}: 存在于 {count}/{len(files)} 个文件中")
+        print(f"- {col}: 存在于 {count}/{len(files)} 个file中")
     
     print("\n" + "="*50)
     print("🖼️ Images 字段类型分布:")
     print(df["images_type"].value_counts())
     
-    # 找出那些字段缺失的文件
+    # 找出那些字段缺失的file
     expected_cols = set(all_column_stats.keys())
     print("\n" + "="*50)
     print("⚠️ 结构异常检查:")
     for _, row in df.iterrows():
         missing = expected_cols - set(row["columns"].split(","))
         if missing:
-            print(f"文件 {row['file']} 缺少字段: {missing}")
+            print(f"file {row['file']} 缺少字段: {missing}")
 
     return df
 

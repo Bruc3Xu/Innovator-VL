@@ -40,7 +40,7 @@ def convert_image(
             image = Image.open(io.BytesIO(image))
     elif isinstance(image, bytes):
         image = Image.open(io.BytesIO(image))
-    # 如果 image 已经是 PIL Image 对象，跳过上面的所有分支，直接继续处理
+    # If image is already a PIL Image object, skip all branches above and continue
 
     if image.mode in ("CMYK", "YCbCr", "LAB", "HSV", "P"):
         image = image.convert("RGB")
