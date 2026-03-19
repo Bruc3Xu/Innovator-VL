@@ -66,7 +66,7 @@ def check_dataset_features(parquet_path):
                                     try:
                                         keys = list(inner_feature.keys())
                                         print(f"    字典键: {keys}")
-                                    except:
+                                    except Exception:
                                         pass
                             else:
                                 print(f"    ⚠️  未知的内部特征类型")

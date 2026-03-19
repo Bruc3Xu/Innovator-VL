@@ -253,7 +253,7 @@ class JudgeRewardSystem:
                     self._event_loop
                 ).result(timeout=1.0)
                 metrics.update(pool_metrics)
-            except:
+            except Exception:
                 pass
 
         return metrics
@@ -267,7 +267,7 @@ class JudgeRewardSystem:
                     self._event_loop
                 )
                 future.result(timeout=2.0)
-            except:
+            except Exception:
                 pass
 
         if hasattr(self, '_executor'):
@@ -306,7 +306,7 @@ reward:
     # Circuit breaker
     circuit_breaker_threshold: 10
     circuit_breaker_timeout: 60
-""
+"""
 
 
 if __name__ == "__main__":

@@ -1,33 +1,35 @@
 """
-适配vLLM部署的OpenAI兼容接口的Judge Model
-支持异步调用和批量处理
+vLLM-deployed Judge Model with OpenAI-compatible interface
+Supports async calls and batch processing
 """
 
 import asyncio
-import os
+import json
 import logging
-from typing import Dict, List, Optional
+import os
 from dataclasses import dataclass
-from openai import AsyncOpenAI
+from typing import Dict, List, Optional
+
 import httpx
+from openai import AsyncOpenAI
 
 logger = logging.getLogger("VLLMJudge")
 
 
 @dataclass
 class VLLMJudgeRequest:
-    """请求给vLLM部署的judge model"""
+    """Request to vLLM-deployed judge model"""
     prompt: str
     completion: str
     answer: Optional[str] = None
     answer_type: Optional[str] = None
-    question_type: Optional[str] = None  # 如 'math', 'reasoning', 'coding'
+    question_type: Optional[str] = None  # e.g., 'math', 'reasoning', 'coding'
     metadata: Optional[Dict] = None
 
 
 @dataclass
 class VLLMJudgeResponse:
-    """vLLM judge model的响应"""
+    """Response from vLLM judge model"""
     score: float
     explanation: Optional[str] = None
     detailed_scores: Optional[Dict[str, float]] = None
@@ -35,18 +37,18 @@ class VLLMJudgeResponse:
 
 
 class AsyncVLLMJudgeClient:
-    """异步vLLM judge model客户端"""
+    """Async vLLM judge model client"""
 
     def __init__(self, config: Dict):
         self.config = config
         self.base_url = config.get("judge_url", "http://localhost:8000/v1")
         self.model_name = config.get("judge_model", "judge-model")
-        self.api_key = config.get("api_key", "dummy-key")  # vLLM可能不需要真正的key
+        self.api_key = config.get("api_key", "dummy-key")  # vLLM may not need a real key
         self.timeout = config.get("timeout", 30.0)
         self.max_retries = config.get("max_retries", 3)
         self.retry_delay = config.get("retry_delay", 1.0)
 
-        # 创建异步客户端
+        # Create async client
         self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
@@ -54,9 +56,9 @@ class AsyncVLLMJudgeClient:
         )
 
     def create_judge_prompt(self, request: VLLMJudgeRequest) -> str:
-        """创建给judge model的系统prompt"""
+        """Create system prompt for judge model"""
 
-        # 基础system prompt
+        # Base system prompt
         base_system = """You are an expert evaluator specializing in {question_type} problems.
 Your task is to evaluate the quality of a model's completion based on the provided ground truth answer.
 
@@ -77,7 +79,7 @@ Evaluation criteria:
 - Score 0.5-0.9: Partially correct or minor formatting issues
 - Score 0.0-0.4: Incorrect answer or major errors"""
 
-        # 根据问题类型调整system prompt
+        # Adjust system prompt based on question type
         if request.question_type == "math":
             system = base_system.format(question_type="mathematical") + """
 
@@ -111,33 +113,33 @@ Additional coding evaluation rules:
         return system
 
     def create_user_prompt(self, request: VLLMJudgeRequest) -> str:
-        """创建给judge model的用户prompt"""
+        """Create user prompt for judge model"""
 
         prompt_parts = []
 
-        # 问题描述
+        # Question description
         prompt_parts.append(f"Question: {request.prompt}")
 
-        # 标准答案（如果有）
+        # Ground truth answer (if available)
         if request.answer:
             prompt_parts.append(f"Ground Truth Answer: {request.answer}")
 
-        # 答案类型
+        # Answer type
         if request.answer_type:
             prompt_parts.append(f"Expected Answer Type: {request.answer_type}")
 
-        # 模型回复
+        # Model completion
         prompt_parts.append(f"Model Completion:\n{request.completion}")
 
-        # 评估要求
+        # Evaluation requirements
         prompt_parts.append("\nEvaluate this completion based on the criteria provided in the system message.")
 
         return "\n\n".join(prompt_parts)
 
     async def judge_single(self, request: VLLMJudgeRequest) -> VLLMJudgeResponse:
-        """评判单个样本"""
+        """Evaluate single sample"""
 
-        # 构建messages
+        # Build messages
         messages = [
             {
                 "role": "system",
@@ -149,20 +151,20 @@ Additional coding evaluation rules:
             }
         ]
 
-        # 添加retry机制
+        # Add retry mechanism
         for attempt in range(self.max_retries):
             try:
                 completion = await self.client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
-                    temperature=0.1,  # 低温度确保一致性
-                    max_tokens=500,   # 足够的空间输出JSON
-                    response_format={"type": "json_object"}  # 强制JSON格式
+                    temperature=0.1,  # Low temperature for consistency
+                    max_tokens=500,   # Sufficient space for JSON output
+                    response_format={"type": "json_object"}  # Force JSON format
                 )
 
-                # 解析响应
+                # Parse response
                 content = completion.choices[0].message.content
-                response_dict = eval(content)  # 解析JSON
+                response_dict = json.loads(content)  # Parse JSON safely
 
                 return VLLMJudgeResponse(
                     score=float(response_dict["score"]),
@@ -174,10 +176,10 @@ Additional coding evaluation rules:
             except Exception as e:
                 logger.warning(f"Attempt {attempt + 1} failed: {e}")
                 if attempt < self.max_retries - 1:
-                    await asyncio.sleep(self.retry_delay * (2 ** attempt))  # 指数退避
+                    await asyncio.sleep(self.retry_delay * (2 ** attempt))  # Exponential backoff
                 else:
                     logger.error(f"All attempts failed for judge request")
-                    # 返回默认值
+                    # Return default values
                     return VLLMJudgeResponse(
                         score=0.0,
                         explanation=f"Judge model failed after {self.max_retries} attempts",
@@ -186,12 +188,12 @@ Additional coding evaluation rules:
                     )
 
     async def judge_batch(self, requests: List[VLLMJudgeRequest]) -> List[VLLMJudgeResponse]:
-        """批量评判"""
-        # 并发处理所有请求
+        """Evaluate batch"""
+        # Process all requests concurrently
         tasks = [self.judge_single(req) for req in requests]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 处理异常
+        # Handle exceptions
         final_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
@@ -208,27 +210,27 @@ Additional coding evaluation rules:
         return final_results
 
 
-# 与现有系统集成的适配器
+# Adapter for integration with existing systems
 class VLLMJudgeModelAdapter:
-    """适配器，将vLLM Judge适配到现有评分系统"""
+    """Adapter that integrates vLLM Judge into the existing scoring system"""
 
     def __init__(self, config: Dict):
         self.config = config
         self.vllm_client = AsyncVLLMJudgeClient(config)
 
-        # 配置评分权重
+        # Configure scoring weights
         self.thinking_weight = config.get("thinking_weight", 0.3)
         self.answer_weight = config.get("answer_weight", 0.6)
         self.format_weight = config.get("format_weight", 0.1)
 
     async def evaluate(self, prompt: str, completion: str, answer: str,
                       prompt_type: str = "normal", answer_type: str = "ANY") -> Dict[str, float]:
-        """评估单个回复"""
+        """Evaluate a single response"""
 
-        # 确定问题类型
+        # Determine question type
         question_type = self._determine_question_type(prompt, answer_type)
 
-        # 创建请求
+        # Create request
         request = VLLMJudgeRequest(
             prompt=prompt,
             completion=completion,
@@ -238,10 +240,10 @@ class VLLMJudgeModelAdapter:
             metadata={"prompt_type": prompt_type}
         )
 
-        # 调用vLLM judge
+        # Call vLLM judge
         response = await self.vllm_client.judge_single(request)
 
-        # 转换结果格式
+        # Transform result format
         return {
             "score": response.score,
             "thinking_score": response.detailed_scores.get("reasoning", 0.0) if response.detailed_scores else 0.0,
@@ -255,7 +257,7 @@ class VLLMJudgeModelAdapter:
         }
 
     def _determine_question_type(self, prompt: str, answer_type: str) -> str:
-        """根据prompt和答案类型确定问题类型"""
+        """Determine question type based on prompt and answer type"""
         if answer_type in ["NUMBER", "MATH_EXPRESSIONS"]:
             return "math"
         elif answer_type in ["HTML_CODE", "SVG_CODE", "GENERAL_CODE"]:
@@ -266,15 +268,15 @@ class VLLMJudgeModelAdapter:
             return "general"
 
 
-# 使用示例
+# Usage example
 async def main():
-    """使用示例"""
+    """Usage example"""
 
-    # 配置
+    # Configuration
     config = {
-        "judge_url": "http://localhost:8000/v1",  # 你的vLLM服务地址
-        "judge_model": "your-judge-model-name",  # 你的judge模型名称
-        "api_key": "dummy-key",  # vLLM兼容模式下可以是dummy key
+        "judge_url": "http://localhost:8000/v1",  # Your vLLM service address
+        "judge_model": "your-judge-model-name",  # Your judge model name
+        "api_key": "dummy-key",  # Can be dummy key in vLLM compatible mode
         "thinking_weight": 0.3,
         "answer_weight": 0.6,
         "format_weight": 0.1,
@@ -282,16 +284,16 @@ async def main():
         "max_retries": 3
     }
 
-    # 创建适配器
+    # Create adapter
     adapter = VLLMJudgeModelAdapter(config)
 
-    # 测试用例
+    # Test cases
     test_inputs = [
         {
-            "prompt": "计算: 156 + 234 = ?",
+            "prompt": "Calculate: 156 + 234 = ?",
             "completion": """
 <think>
-让我计算156 + 234：
+Let me calculate 156 + 234:
 156
 +234
 ----
@@ -304,7 +306,7 @@ async def main():
             "answer_type": "NUMBER"
         },
         {
-            "prompt": "长方形面积计算: 长=10cm, 宽=5cm",
+            "prompt": "Rectangle area calculation: length=10cm, width=5cm",
             "completion": "<answer>50 square cm</answer>",
             "answer": "50",
             "prompt_type": "normal",
@@ -312,7 +314,7 @@ async def main():
         }
     ]
 
-    # 执行评估
+    # Execute evaluation
     for i, test_input in enumerate(test_inputs):
         result = await adapter.evaluate(**test_input)
 

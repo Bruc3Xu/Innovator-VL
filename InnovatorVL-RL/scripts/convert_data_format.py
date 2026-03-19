@@ -15,7 +15,7 @@ def process_row(row):
     if isinstance(reward_model, str):
         try:
             reward_model = ast.literal_eval(reward_model)
-        except:
+        except Exception:
             pass
     
     if isinstance(reward_model, dict):
@@ -33,7 +33,7 @@ def process_row(row):
     if isinstance(prompt_data, str):
         try:
             prompt_data = ast.literal_eval(prompt_data)
-        except:
+        except Exception:
             pass
             
     user_content = ""

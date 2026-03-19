@@ -1,6 +1,6 @@
 """
-Judge Factory - 统一入口创建不同类型的Judge模型
-支持：本地规则、增强Judge、vLLM部署的Judge
+Judge Factory - Unified entry for creating different types of Judge models
+Supports: local rules, enhanced Judge, vLLM-deployed Judge
 """
 
 import os
@@ -12,21 +12,21 @@ from .vllm_judge_adapter import VLLMJudgeModelAdapter
 
 def create_judge(config: Dict, judge_type: str = "auto") -> object:
     """
-    创建Judge模型的统一工厂函数
+    Unified factory function for creating Judge models
 
     Args:
-        config: 配置字典
+        config: Configuration dictionary
         judge_type:
-            - "auto": 自动检测
-            - "rule": 基于规则的奖励
-            - "enhanced": 增强的本地Judge
-            - "vllm": vLLM部署的Judge Model
+            - "auto": Auto-detect
+            - "rule": Rule-based reward
+            - "enhanced": Enhanced local Judge
+            - "vllm": vLLM-deployed Judge Model
 
     Returns:
-        Judge模型实例
+        Judge model instance
     """
     if judge_type == "auto":
-        # 自动检测最佳配置
+        # Auto-detect best configuration
         if config.get("judge", {}).get("judge_url"):
             judge_type = "vllm"
         elif config.get("reward", {}).get("type") == "enhanced_judge":
@@ -35,7 +35,7 @@ def create_judge(config: Dict, judge_type: str = "auto") -> object:
             judge_type = "rule"
 
     if judge_type == "vllm":
-        # vLLM部署的Judge Model
+        # vLLM-deployed Judge Model
         vllm_config = {
             "judge_url": config.get("judge", {}).get("judge_url", "http://localhost:8000/v1"),
             "judge_model": config.get("judge", {}).get("model_name", "judge-model"),
@@ -46,11 +46,11 @@ def create_judge(config: Dict, judge_type: str = "auto") -> object:
             "answer_weight": 0.6,
             "format_weight": 0.1,
         }
-        # 这里只是为了兼容性，实际应该使用完整的集成
+        # This is for compatibility only; full integration should be used in practice
         return VLLMJudgeModelAdapter(vllm_config)
 
     elif judge_type == "enhanced":
-        # 增强版本地Judge
+        # Enhanced local Judge
         enhanced_config = {
             "async_pool_size": config.get("reward", {}).get("config", {}).get("async_pool_size", 4),
             "timeout": config.get("reward", {}).get("config", {}).get("timeout", 30.0),
@@ -68,21 +68,21 @@ def create_judge(config: Dict, judge_type: str = "auto") -> object:
         )
 
     elif judge_type == "rule":
-        # 原始的基于规则的奖励系统
+        # Original rule-based reward system
         return RewardSystem()
 
     else:
         raise ValueError(f"Unknown judge type: {judge_type}")
 
 
-# 配置示例
+# Configuration examples
 JUDGE_CONFIG_EXAMPLES = {
-    # 1. vLLM部署的Judge Model
+    # 1. vLLM-deployed Judge Model
     "vllm": {
         "type": "vllm",
         "config": {
             "judge_url": "http://your-vllm-server:8000/v1",
-            "model_name": "your-judge-model",  # 你的judge模型名称
+            "model_name": "your-judge-model",  # Your judge model name
             "api_key": "dummy-key",  # vLLM兼容模式
             "timeout": 30.0,
             "max_retries": 3,
@@ -90,7 +90,7 @@ JUDGE_CONFIG_EXAMPLES = {
         }
     },
 
-    # 2. 增强版本地Judge
+    # 2. Enhanced local Judge
     "enhanced": {
         "type": "enhanced",
         "config": {
@@ -112,21 +112,21 @@ JUDGE_CONFIG_EXAMPLES = {
         }
     },
 
-    # 3. 传统规则-based
+    # 3. Traditional rule-based
     "rule": {
         "type": "rule",
-        "config": {}  # 使用默认配置
+        "config": {}  # Use default configuration
     }
 }
 
 
-# 集成到训练配置
+# Integration into training configuration
 TRAINING_CONFIG_TEMPLATE = """
 # training_config.yaml
 
-# Judge模型配置
+# Judge model configuration
 judge:
-  type: vllm  # 或 "enhanced", "rule"
+  type: vllm  # or "enhanced", "rule"
   config:
     # vLLM配置
     judge_url: ${JUDGE_MODEL_URL:http://localhost:8000/v1}
@@ -139,13 +139,13 @@ judge:
     answer_weight: 0.60
     format_weight: 0.10
 
-# 训练配置
+# Training configuration
 reward:
-  type: ${JUDGE_TYPE:enhanced_judge}  # 兼容旧配置
+  type: ${JUDGE_TYPE:enhanced_judge}  # Backward compatible
   config:
-    # 原有配置...
+    # Original configuration...
 
-# 环境变量设置：
+# Environment variable settings:
 # export JUDGE_MODEL_URL=http://your-vllm-server:8000/v1
 # export JUDGE_MODEL_NAME=your-judge-model
 # export JUDGE_TYPE=vllm
@@ -153,20 +153,20 @@ reward:
 
 
 if __name__ == "__main__":
-    # 测试工厂函数
+    # Test factory function
     import asyncio
 
-    # 1. 测试vLLM模式
+    # 1. Test vLLM mode
     vllm_config = JUDGE_CONFIG_EXAMPLES["vllm"]["config"]
     vllm_judge = create_judge({"judge": vllm_config}, "vllm")
     print("✓ vLLM judge created")
 
-    # 2. 测试增强模式
+    # 2. Test enhanced mode
     enhanced_config = JUDGE_CONFIG_EXAMPLES["enhanced"]["config"]
     enhanced_judge = create_judge({"reward": {"config": enhanced_config}}, "enhanced")
     print("✓ Enhanced judge created")
 
-    # 3. 测试规则模式
+    # 3. Test rule mode
     rule_judge = create_judge({}, "rule")
     print("✓ Rule judge created")
 

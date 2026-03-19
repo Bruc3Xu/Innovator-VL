@@ -1,20 +1,22 @@
+import json
 import re
 import os
 
 from math_verify import parse, verify
 from openai import OpenAI
 
-# vLLM Judge Model配置
+# vLLM Judge Model configuration
 VLLM_JUDGE_URL = os.getenv("VLLM_JUDGE_URL", "http://localhost:8000/v1")
 VLLM_JUDGE_MODEL = os.getenv("VLLM_JUDGE_MODEL", "judge-model")
 VLLM_JUDGE_API_KEY = os.getenv("VLLM_JUDGE_API_KEY", "dummy-key")
-USE_LLM_JUDGE = os.getenv("USE_LLM_JUDGE", "True")  # 默认启用vLLM judge
-JUDGE_MODE = os.getenv("JUDGE_MODE", "enhanced")  # simple|enhanced 两种评分模式
+_USE_LLM_JUDGE_STR = os.getenv("USE_LLM_JUDGE", "True")  # Default to True
+USE_LLM_JUDGE = _USE_LLM_JUDGE_STR.lower() in ("true", "1", "yes", "on")
+JUDGE_MODE = os.getenv("JUDGE_MODE", "enhanced")  # simple|enhanced scoring modes
 
-# Judge 调用配置
-JUDGE_TIMEOUT_SECONDS = float(os.getenv("JUDGE_TIMEOUT_SECONDS", "60.0"))  # 超时时间（秒）
-JUDGE_MAX_RETRIES = int(os.getenv("JUDGE_MAX_RETRIES", "3"))  # 最大重试次数
-JUDGE_RETRY_DELAY = float(os.getenv("JUDGE_RETRY_DELAY", "0.5"))  # 重试延迟（秒）
+# Judge invocation configuration
+JUDGE_TIMEOUT_SECONDS = float(os.getenv("JUDGE_TIMEOUT_SECONDS", "60.0"))  # Timeout (seconds)
+JUDGE_MAX_RETRIES = int(os.getenv("JUDGE_MAX_RETRIES", "3"))  # Max retry count
+JUDGE_RETRY_DELAY = float(os.getenv("JUDGE_RETRY_DELAY", "0.5"))  # Retry delay (seconds)
 
 # Don't initialize client at module level - it will be created per-process
 # to avoid multiprocessing serialization issues
@@ -27,7 +29,7 @@ def get_client():
         # Re-read env vars in case they were set after module import
         url = os.getenv("VLLM_JUDGE_URL", "http://localhost:8000/v1")
         api_key = os.getenv("VLLM_JUDGE_API_KEY", "dummy-key")
-        # 在客户端级别设置超时
+        # Set timeout at client level
         _client = OpenAI(
             api_key=api_key, 
             base_url=url,
@@ -35,12 +37,12 @@ def get_client():
         )
     return _client
 
-# 添加日志记录
+# Add logging
 import logging
 import time
 logger = logging.getLogger("CustomReward")
 logger.setLevel(logging.INFO)
-# 避免重复创建handler
+# Avoid creating duplicate handlers
 if not logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
@@ -555,8 +557,7 @@ Pay special attention to:
             response = get_client().chat.completions.create(**payload)
             content = response.choices[0].message.content
 
-            # 解析JSON响应
-            import json
+            # Parse JSON response
             try:
                 result = json.loads(content)
                 return {
@@ -568,10 +569,9 @@ Pay special attention to:
                     "confidence": result.get("confidence", 0.8)
                 }
             except json.JSONDecodeError:
-                # Fallback: 提取第一个小数作为score
+                # Fallback: extract first decimal as score
                 if content:
                     try:
-                        import re
                         scores = re.findall(r'\d+\.\d+', content)
                         if len(scores) >= 1:
                             logger.warning(f"JSON parse failed, extracted score from text: {scores[0]}")
@@ -664,7 +664,7 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None, sand
     format_reward_score = format_reward(solution_str)
 
     # Step 2: 使用vLLM Judge模型评估（新增增强版）
-    if USE_LLM_JUDGE == "True":
+    if USE_LLM_JUDGE:
         if JUDGE_MODE == "enhanced":
             # 增强版：两部分评分
             judge_result = llm_as_judge_enhanced(solution_str, ground_truth, extra_info)
@@ -729,7 +729,7 @@ def _compute_score_simple(data_source, solution_str, ground_truth, extra_info,
         except Exception:
             acc_score = 0.0
 
-    if acc_score == 0.0 and USE_LLM_JUDGE == "True":
+    if acc_score == 0.0 and USE_LLM_JUDGE:
         acc_score = llm_as_judge_sync(predict_str, ground_truth, extra_info)
 
     # 特殊情况：直接评判整个solution

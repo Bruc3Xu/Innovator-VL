@@ -195,7 +195,7 @@ class EnhancedJudgeRewardSystem(BaseRewardSystem):
                 if self._judge_model:
                     # 可以在这里添加清理逻辑
                     pass
-            except:
+            except Exception:
                 pass
 
             if hasattr(self, '_executor'):
