@@ -11,17 +11,17 @@ def analyze_shards(root_path, sample_size=5):
     summary = []
     all_column_stats = Counter()
 
-    print(f"🔍 正在分析 {len(files)} 个分片...")
+    print(f"🔍 Analyzing {len(files)}  shards...")
 
     for f in files:
         try:
-            # 仅加载 schema 和前几行
+            # Only load schema and first few rows
             ds = load_dataset("parquet", data_files=f, split="train")
             num_rows = len(ds)
             columns = ds.column_names
             all_column_stats.update(columns)
             
-            # 获取 images 字段的详细类型
+            # Get detailed type of images field
             img_type = ds.features.get("images", "Missing")
             
             summary.append({
@@ -40,7 +40,7 @@ def analyze_shards(root_path, sample_size=5):
     print("\n" + "="*50)
     print("📊 字段出现频率汇总 (用于确定 standard_features):")
     for col, count in all_column_stats.items():
-        print(f"- {col}: 存在于 {count}/{len(files)} 个file中")
+        print(f"- {col}: 存在于 {count}/{len(files)} 个filein")
     
     print("\n" + "="*50)
     print("🖼️ Images 字段类型分布:")

@@ -39,16 +39,16 @@ class AnswerExtractor:
         self.number_pattern = re.compile(r'-?\d+(?:\.\d+)?')
 
     def extract_parts(self, completion: str) -> Tuple[Optional[str], Optional[str]]:
-        """提取思考内容和答案内容"""
+        """Extract thinking content and answer content"""
         thinking = None
         answer = None
 
-        # 1. 优先提取思考部分
+        # 1. Prioritize extracting thinking part
         think_match = self.think_pattern.search(completion)
         if think_match:
             thinking = think_match.group(1).strip()
 
-        # 2. 提取答案（多层次提取）
+        # 2. Extract answer (multi-level extraction)
         answer = self.extract_answer(completion)
 
         return thinking, answer

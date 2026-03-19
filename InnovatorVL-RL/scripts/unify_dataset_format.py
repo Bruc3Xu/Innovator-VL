@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-统一数据集格式脚本
-将所有数据集file统一为相同的格式，确保每个字段的类型都一致
-这样可以避免在 concatenate_datasets 时出现类型不匹配的问题
+Unified dataset format script
+Unify all dataset files to same format，确保每个字段的类型都一致
+This avoids type mismatch issues when concatenating datasets
 """
 
 import sys
@@ -47,17 +47,17 @@ STANDARD_FEATURES = {
 
 def analyze_all_datasets(input_paths: List[str]) -> Dict[str, Any]:
     """
-    分析所有数据集，收集All fields和它们的类型
-    返回：字段名 -> 所有出现过的类型的集合
+    分析all数据集，收集All fieldsand它们的类型
+    返回：字段名 -> all出现过的类型的集合
     """
     print("=" * 80)
-    print("步骤 1: 分析所有数据集，收集字段信息...")
+    print("步骤 1: 分析all数据集，收集字段信息...")
     print("=" * 80)
     
     all_fields: Set[str] = set()
     field_types: Dict[str, Set[str]] = defaultdict(set)
     
-    # 展开所有路径
+    # 展开all路径
     expanded_paths = []
     for path in input_paths:
         path = path.strip()
@@ -68,7 +68,7 @@ def analyze_all_datasets(input_paths: List[str]) -> Dict[str, Any]:
         elif path.endswith((".parquet", ".json")):
             expanded_paths.append(path)
     
-    print(f"找到 {len(expanded_paths)} 个数据集file")
+    print(f"Found {len(expanded_paths)} 个数据集file")
     
     for path in tqdm(expanded_paths, desc="分析数据集"):
         try:
@@ -118,7 +118,7 @@ def determine_standard_features(all_fields: Set[str], field_types: Dict[str, Set
         if field in FIELDS_TO_REMOVE:
             continue
         
-        # 如果字段在标准定义中，使用标准定义
+        # e.g.果字段在标准定义in，使用标准定义
         if field in STANDARD_FEATURES:
             standard_features_dict[field] = STANDARD_FEATURES[field]
             print(f"  ✅ {field}: 使用预定义标准类型")
@@ -130,16 +130,16 @@ def determine_standard_features(all_fields: Set[str], field_types: Dict[str, Set
             # 简单的类型推断逻辑
             if any("string" in t.lower() for t in type_strs):
                 standard_features_dict[field] = Value("string")
-                print(f"  📝 {field}: 推断为 Value('string')")
+                print(f"  📝 {field}: 推断as Value('string')")
             elif any("int" in t.lower() for t in type_strs):
                 standard_features_dict[field] = Value("int64")
-                print(f"  📝 {field}: 推断为 Value('int64')")
+                print(f"  📝 {field}: 推断as Value('int64')")
             elif any("float" in t.lower() for t in type_strs):
                 standard_features_dict[field] = Value("float")
-                print(f"  📝 {field}: 推断为 Value('float')")
+                print(f"  📝 {field}: 推断as Value('float')")
             elif any("bool" in t.lower() for t in type_strs):
                 standard_features_dict[field] = Value("bool")
-                print(f"  📝 {field}: 推断为 Value('bool')")
+                print(f"  📝 {field}: 推断as Value('bool')")
             else:
                 # 默认使用 string
                 standard_features_dict[field] = Value("string")
@@ -149,7 +149,7 @@ def determine_standard_features(all_fields: Set[str], field_types: Dict[str, Set
 
 def convert_images_to_standard_format(images: Any) -> List[Any]:
     """
-    将图像转换为标准格式（PIL Image 对象，用于 Sequence(Image(...))）
+    将图像转换as标准format（PIL Image 对象，用于 Sequence(Image(...))）
     """
     if images is None or len(images) == 0:
         return []
@@ -160,7 +160,7 @@ def convert_images_to_standard_format(images: Any) -> List[Any]:
             # 已经是 PIL Image，直接使用
             converted.append(img)
         elif isinstance(img, dict):
-            # 从 dict 格式加载
+            # 从 dict format加载
             if "bytes" in img and img["bytes"] is not None:
                 try:
                     pil_img = Image.open(io.BytesIO(img["bytes"]))
@@ -190,19 +190,19 @@ def convert_images_to_standard_format(images: Any) -> List[Any]:
                 print(f"⚠️  无法加载图像路径 {img}: {e}")
                 continue
         else:
-            print(f"⚠️  未知的图像格式: {type(img)}")
+            print(f"⚠️  未知的图像format: {type(img)}")
     
     return converted
 
 def normalize_sample(sample: Dict[str, Any], standard_features: Features) -> Dict[str, Any]:
     """
-    将单个样本转换为标准格式
+    将单个样本转换as标准format
     """
     normalized = {}
     
     for field_name, field_feature in standard_features.items():
         if field_name not in sample:
-            # 字段不存在，设置为 None（如果允许）或默认值
+            # 字段不存在，设置as None（e.g.果允许）或默认值
             if isinstance(field_feature, Value) and field_feature.dtype == "string":
                 normalized[field_name] = None
             else:
@@ -237,7 +237,7 @@ def normalize_sample(sample: Dict[str, Any], standard_features: Features) -> Dic
                 if value is None:
                     normalized[field_name] = []
                 elif isinstance(value, list):
-                    # 转换列表中的每个元素
+                    # 转换列表in的每个元素
                     inner_feature = field_feature.feature
                     if isinstance(inner_feature, Value):
                         if inner_feature.dtype == "string":
@@ -256,7 +256,7 @@ def normalize_sample(sample: Dict[str, Any], standard_features: Features) -> Dic
 
 def process_dataset_file(input_path: str, standard_features: Features, output_path: str = None) -> Dataset:
     """
-    处理单个数据集file，转换为标准格式
+    处理单个数据集file，转换as标准format
     """
     print(f"\n处理file: {input_path}")
     
@@ -266,7 +266,7 @@ def process_dataset_file(input_path: str, standard_features: Features, output_pa
     elif input_path.endswith(".json"):
         dataset = load_dataset("json", data_files=input_path)['train']
     else:
-        raise ValueError(f"不支持的file格式: {input_path}")
+        raise ValueError(f"不支持的fileformat: {input_path}")
     
     # 移除不需要的字段
     columns_to_keep = [col for col in dataset.column_names if col not in FIELDS_TO_REMOVE]
@@ -290,7 +290,7 @@ def process_dataset_file(input_path: str, standard_features: Features, output_pa
         
         return normalized_batch
     
-    # 确定要移除的列（不在标准特征中的列）
+    # 确定要移除的列（不在标准特征in的列）
     columns_to_remove = [col for col in dataset.column_names if col not in standard_features]
     
     # 使用 map 批量处理
@@ -305,34 +305,34 @@ def process_dataset_file(input_path: str, standard_features: Features, output_pa
     # 设置标准特征
     try:
         dataset = dataset.cast(standard_features)
-        print(f"  ✅ success转换为标准格式")
+        print(f"  ✅ success转换as标准format")
     except Exception as e:
         print(f"  ⚠️  cast failed: {e}")
-        print(f"  使用 from_dict 重新创建...")
-        # 重新创建数据集
+        print(f"  使用 from_dict 重new创建...")
+        # 重new创建数据集
         data_dict = {col: [dataset[j][col] for j in range(len(dataset))] 
                      for col in dataset.column_names}
         dataset = Dataset.from_dict(data_dict, features=standard_features)
-        print(f"  ✅ 通过 from_dict success创建标准格式数据集")
+        print(f"  ✅ 通过 from_dict success创建标准format数据集")
     
-    # 保存（如果指定了输出路径）
+    # 保存（e.g.果指定了输出路径）
     if output_path:
         os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
         dataset.to_parquet(output_path)
-        print(f"  💾 已保存到: {output_path}")
+        print(f"  💾 已保存to: {output_path}")
     
     return dataset
 
 def main():
-    parser = argparse.ArgumentParser(description="统一数据集格式")
+    parser = argparse.ArgumentParser(description="统一数据集format")
     parser.add_argument("input_paths", nargs="+", help="输入数据集路径（支持 glob 模式）")
-    parser.add_argument("--output_dir", type=str, help="输出目录（如果不指定，则覆盖原file）")
+    parser.add_argument("--output_dir", type=str, help="输出directory（e.g.果不指定，则覆盖原file）")
     parser.add_argument("--output_suffix", type=str, default="_unified", help="输出file后缀")
     parser.add_argument("--dry-run", action="store_true", help="只分析，不实际转换")
     
     args = parser.parse_args()
     
-    # 步骤 1: 分析所有数据集
+    # 步骤 1: 分析all数据集
     analysis_result = analyze_all_datasets(args.input_paths)
     all_fields = analysis_result["all_fields"]
     field_types = analysis_result["field_types"]
@@ -347,13 +347,13 @@ def main():
     
     # 步骤 3: 处理每个file
     print("\n" + "=" * 80)
-    print("步骤 3: 转换所有数据集file...")
+    print("步骤 3: 转换all数据集file...")
     print("=" * 80)
     
     for input_path in tqdm(expanded_paths, desc="处理file"):
         try:
             if args.output_dir:
-                # 保存到指定目录
+                # 保存to指定directory
                 input_name = Path(input_path).stem
                 output_path = os.path.join(args.output_dir, f"{input_name}{args.output_suffix}.parquet")
             else:
@@ -368,7 +368,7 @@ def main():
             continue
     
     print("\n" + "=" * 80)
-    print("✅ 所有数据集已统一格式！")
+    print("✅ all数据集已统一format！")
     print("=" * 80)
 
 if __name__ == "__main__":

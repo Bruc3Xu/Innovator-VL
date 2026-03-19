@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-扫描 parquet file，找出可能有Feature type问题的字段
+Scan parquet files to find fields with potential Feature type issues
 """
 
 import sys
@@ -8,9 +8,9 @@ from pathlib import Path
 from datasets import load_dataset, Features
 
 def scan_fields(parquet_path):
-    """扫描字段，找出可能有问题的字段"""
+    """Scan fields to find potentially problematic ones"""
     print(f"\n{'='*80}")
-    print(f"扫描file: {parquet_path}")
+    print(f"Scanning file: {parquet_path}")
     print(f"{'='*80}\n")
     
     try:
@@ -23,7 +23,7 @@ def scan_fields(parquet_path):
         print("检查每个字段的Feature type:\n")
         for col in dataset.column_names:
             if col not in dataset.features:
-                print(f"  ⚠️  {col}: 不在 features 中")
+                print(f"  ⚠️  {col}: 不在 features in")
                 continue
                 
             feature = dataset.features[col]
@@ -73,14 +73,14 @@ def scan_fields(parquet_path):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("用法: python3 scan_problematic_fields.py <parquet_file_path>")
-        print("\n示例:")
+        print("Usage: python3 scan_problematic_fields.py <parquet_file_path>")
+        print("\nExample:")
         print("  python3 scan_problematic_fields.py /path/to/file.parquet")
         sys.exit(1)
     
     parquet_path = Path(sys.argv[1])
     if not parquet_path.exists():
-        print(f"❌ file不存在: {parquet_path}")
+        print(f"❌ File does not exist: {parquet_path}")
         sys.exit(1)
     
     problematic_fields = scan_fields(parquet_path)

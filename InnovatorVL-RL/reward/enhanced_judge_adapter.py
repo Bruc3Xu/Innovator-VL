@@ -1,6 +1,6 @@
 """
-适配器：将增强版Judge模型集成到现有训练系统
-保持与原有RewardSystem完全相同的接口
+Adapter: Integrate enhanced Judge model into existing training system
+Maintain exactly the same interface as the original RewardSystem
 """
 
 import asyncio
@@ -103,8 +103,8 @@ class EnhancedJudgeRewardSystem(BaseRewardSystem):
         **kwargs
     ) -> Dict[str, float]:
         """
-        评估模型回复的奖励
-        保持与原有RewardSystem完全相同的接口
+        Evaluate reward for model response
+        Maintain exactly the same interface as the original RewardSystem
         """
         if not self.use_enhanced:
             # Fallback to rule-based system

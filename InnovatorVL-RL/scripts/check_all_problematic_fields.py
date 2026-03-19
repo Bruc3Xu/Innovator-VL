@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-统一检查脚本：扫描目录中所有 parquet file，找出所有有问题的字段
+Unified check script: Scan all parquet files in directory, find all problematic fields
 """
 
 import sys
@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 def check_field_type(feature, field_name=None):
     """
-    检查字段类型是否有问题
+    Check if field type has issues
     返回: (is_problematic, issue_type, details)
     """
     # 检查是否是普通 dict（不是 Features 对象）
@@ -22,9 +22,9 @@ def check_field_type(feature, field_name=None):
     if hasattr(feature, "feature"):
         inner = feature.feature
         if isinstance(inner, dict) and not isinstance(inner, Features):
-            # 跳过 images 字段的特殊结构（有 bytes 和 path 键）
+            # 跳过 images 字段的特殊结构（有 bytes and path 键）
             if field_name == "images" and hasattr(inner, "keys") and "bytes" in inner and "path" in inner:
-                # images 字段需要转换为 Image 类型，不算作"Problematic fields"（会被单独处理）
+                # images 字段需要转换as Image 类型，不算作"Problematic fields"（会被单独处理）
                 return False, None, None
             return True, "List/Sequence 包含普通 dict", f"内部键: {list(inner.keys()) if hasattr(inner, 'keys') else 'N/A'}"
     
@@ -58,8 +58,8 @@ def scan_file(parquet_path):
 
 def main():
     if len(sys.argv) < 2:
-        print("用法: python3 check_all_problematic_fields.py <parquet_file_or_directory>")
-        print("\n示例:")
+        print("Usage: python3 check_all_problematic_fields.py <parquet_file_or_directory>")
+        print("\nExample:")
         print("  python3 check_all_problematic_fields.py /path/to/file.parquet")
         print("  python3 check_all_problematic_fields.py /path/to/directory -r")
         sys.exit(1)
@@ -71,7 +71,7 @@ def main():
         print(f"❌ 路径不存在: {input_path}")
         sys.exit(1)
     
-    # 收集所有 parquet file
+    # 收集all parquet file
     if input_path.is_file() and input_path.suffix == ".parquet":
         parquet_files = [input_path]
     elif input_path.is_dir():
@@ -84,14 +84,14 @@ def main():
         sys.exit(1)
     
     if not parquet_files:
-        print(f"❌ 未找到 parquet file")
+        print(f"❌ 未Found parquet file")
         sys.exit(1)
     
     print(f"\n{'='*80}")
     print(f"扫描 {len(parquet_files)} 个 parquet file")
     print(f"{'='*80}\n")
     
-    # 统计所有有问题的字段
+    # 统计all有问题的字段
     all_problematic_fields = defaultdict(lambda: {
         "issue_types": set(),
         "files": [],
@@ -100,7 +100,7 @@ def main():
     
     file_results = []
     
-    for parquet_file in tqdm(parquet_files, desc="扫描file"):
+    for parquet_file in tqdm(parquet_files, desc="Scanning file"):
         problematic_fields, num_samples = scan_file(parquet_file)
         
         if problematic_fields is None:
@@ -146,7 +146,7 @@ def main():
         for field_name, info in sorted(all_problematic_fields.items()):
             print(f"  {field_name}:")
             print(f"    问题类型: {', '.join(info['issue_types'])}")
-            print(f"    出现在 {len(info['files'])} 个file中")
+            print(f"    出现在 {len(info['files'])} 个filein")
             print(f"    总Sample count: {info['total_samples']}")
             print(f"    file列表:")
             for file_path in info['files'][:5]:  # 只显示前5个
@@ -159,7 +159,7 @@ def main():
         print(f"\n{'='*80}")
         print("建议的 FIELDS_TO_REMOVE 列表")
         print(f"{'='*80}\n")
-        print("# 需要移除的字段列表（这些字段在训练时用不到，且有Feature type问题）")
+        print("# 需要移除的字段列表（这些字段在训练时用不to，且有Feature type问题）")
         print("FIELDS_TO_REMOVE = [")
         for field_name in sorted(all_problematic_fields.keys()):
             issue_types = all_problematic_fields[field_name]["issue_types"]
@@ -167,8 +167,8 @@ def main():
             print(f'    "{field_name}",      # {issue_desc}')
         print("]")
     else:
-        print("✅ 所有file都没有发现明显的Problematic fields！")
-        print("   注意：images 字段如果有问题会被单独处理，不在此列表中")
+        print("✅ allfile都没有发现明显的Problematic fields！")
+        print("   注意：images 字段e.g.果有问题会被单独处理，不在此列表in")
     
     print(f"\n{'='*80}\n")
 

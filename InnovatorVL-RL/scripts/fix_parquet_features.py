@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-预处理脚本：修复 parquet file中的Feature type问题
-- 移除有问题的字段（训练时用不到）
-- 统一 images 字段类型（转换为 Sequence(Image(...))），必须统一才能 concatenate_datasets
+Preprocessing script: Fix Feature type issues in parquet files
+- Remove problematic fields (not used in training)
+- Unify images field type (convert to Sequence(Image(...))), must be unified to concatenatee_datasets
 """
 
 import sys
@@ -11,20 +11,20 @@ from pathlib import Path
 from datasets import load_dataset, Dataset, Features, Sequence, Image as DatasetImage
 from tqdm import tqdm
 
-# 需要移除的字段列表（这些字段在训练时用不到，且有Feature type问题）
-# 注意：如果发现其他字段也有类似问题（普通 dict 或 List 包含普通 dict），
-# 可以添加到这个列表中
+# 需要移除的字段列表（这些字段在训练时用不to，且有Feature type问题）
+# 注意：e.g.果发现其他字段也有类似问题（普通 dict 或 List 包含普通 dict），
+# 可以添加to这个列表in
 FIELDS_TO_REMOVE = [
     "reward_model",      # 普通 dict，训练时不需要
     "vanilla_prompt",   # List 包含普通 dict，训练时不需要
-    # 可以根据需要添加其他字段，例如：
+    # 可以根据需要添加其他字段，例e.g.：
     # "other_problematic_field",
 ]
 
 # Images 字段统一目标类型
 # 选项：
-# - "image": 统一为 Sequence(Image(decode=True)) - 推荐，datasets 库标准格式
-# - "dict": 统一为 List({'bytes': Value('binary'), 'path': Value('string')}) - 原始格式
+# - "image": 统一as Sequence(Image(decode=True)) - 推荐，datasets 库标准format
+# - "dict": 统一as List({'bytes': Value('binary'), 'path': Value('string')}) - 原始format
 IMAGES_TARGET_TYPE = "image"  # 或 "dict"
 
 def fix_dataset_features(dataset):
@@ -47,7 +47,7 @@ def fix_dataset_features(dataset):
         needs_conversion = False
         target_type = None
         
-        # 检查当前类型和目标类型
+        # 检查当前类型and目标类型
         if hasattr(img_feature, "feature"):
             inner = img_feature.feature
             if IMAGES_TARGET_TYPE == "image":
@@ -72,7 +72,7 @@ def fix_dataset_features(dataset):
         
         if needs_conversion:
             if target_type == "image":
-                print(f"  统一 images 字段类型为 Sequence(Image(...))...")
+                print(f"  统一 images 字段类型as Sequence(Image(...))...")
                 new_features_dict = dict(dataset.features)
                 new_features_dict["images"] = Sequence(DatasetImage(decode=True))
                 new_features = Features(new_features_dict)
@@ -82,15 +82,15 @@ def fix_dataset_features(dataset):
                     print(f"  ✅ images 字段统一success")
                 except Exception as e:
                     print(f"  ⚠️  cast failed: {e}")
-                    print(f"  使用 from_dict 重新创建...")
-                    # 重新创建数据集
+                    print(f"  使用 from_dict 重new创建...")
+                    # 重new创建数据集
                     data_dict = {col: [dataset[j][col] for j in range(len(dataset))] 
                                 for col in dataset.column_names}
                     dataset = Dataset.from_dict(data_dict, features=new_features)
                     print(f"  ✅ 通过 from_dict success统一 images 字段")
             else:
-                # 统一为 dict 格式
-                print(f"  统一 images 字段类型为 List({{'bytes': ..., 'path': ...}})...")
+                # 统一as dict format
+                print(f"  统一 images 字段类型as List({{'bytes': ..., 'path': ...}})...")
                 from datasets import Value
                 from datasets.features.features import List as FeaturesList
                 
@@ -102,9 +102,9 @@ def fix_dataset_features(dataset):
                 new_features = Features(new_features_dict)
                 
                 try:
-                    # 如果当前是 Image 类型，需要转换为 dict
-                    # 注意：这需要重新编码图像，可能比较慢
-                    print(f"  ⚠️  从 Image 类型转换为 dict 格式，这可能需要重新编码图像...")
+                    # e.g.果当前是 Image 类型，需要转换as dict
+                    # 注意：这需要重new编码图像，可能比较慢
+                    print(f"  ⚠️  从 Image 类型转换as dict format，这可能需要重new编码图像...")
                     data_dict = {col: [dataset[j][col] for j in range(len(dataset))] 
                                 for col in dataset.column_names}
                     
@@ -136,7 +136,7 @@ def fix_dataset_features(dataset):
                     data_dict["images"] = converted_images
                     
                     dataset = Dataset.from_dict(data_dict, features=new_features)
-                    print(f"  ✅ 通过 from_dict success统一 images 字段为 dict 格式")
+                    print(f"  ✅ 通过 from_dict success统一 images 字段as dict format")
                 except Exception as e:
                     print(f"  ❌ 转换failed: {e}")
                     import traceback
@@ -152,11 +152,11 @@ def process_parquet_file(input_path, output_path=None):
     """处理单个 parquet file"""
     input_path = Path(input_path)
     if not input_path.exists():
-        print(f"❌ file不存在: {input_path}")
+        print(f"❌ File does not exist: {input_path}")
         return False
     
     if output_path is None:
-        # 默认输出到同目录，添加 _fixed 后缀
+        # 默认输出to同directory，添加 _fixed 后缀
         output_path = input_path.parent / f"{input_path.stem}_fixed{input_path.suffix}"
     else:
         output_path = Path(output_path)
@@ -196,7 +196,7 @@ def process_parquet_file(input_path, output_path=None):
                     print(f"     内部类型: {type(img_feature.feature)}")
         
         # 保存修复后的数据集
-        print(f"\n保存到: {output_path}")
+        print(f"\n保存to: {output_path}")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         fixed_dataset.to_parquet(str(output_path))
         print(f"✅ success保存修复后的数据集")
@@ -211,11 +211,11 @@ def process_parquet_file(input_path, output_path=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="修复 parquet file中的Feature type问题")
-    parser.add_argument("input", help="输入的 parquet file路径或目录")
-    parser.add_argument("-o", "--output", help="输出file路径或目录（可选，默认添加 _fixed 后缀）")
-    parser.add_argument("-r", "--recursive", action="store_true", help="递归处理目录中的所有 parquet file")
-    parser.add_argument("--overwrite", action="store_true", help="覆盖原file（默认是创建新file）")
+    parser = argparse.ArgumentParser(description="修复 parquet filein的Feature type问题")
+    parser.add_argument("input", help="输入的 parquet file路径或directory")
+    parser.add_argument("-o", "--output", help="输出file路径或directory（可选，默认添加 _fixed 后缀）")
+    parser.add_argument("-r", "--recursive", action="store_true", help="递归处理directoryin的all parquet file")
+    parser.add_argument("--overwrite", action="store_true", help="覆盖原file（默认是创建newfile）")
     
     args = parser.parse_args()
     
@@ -229,17 +229,17 @@ def main():
         else:
             process_parquet_file(input_path, args.output)
     elif input_path.is_dir():
-        # 处理目录
+        # 处理directory
         if args.recursive:
             parquet_files = list(input_path.rglob("*.parquet"))
         else:
             parquet_files = list(input_path.glob("*.parquet"))
         
         if not parquet_files:
-            print(f"❌ 在 {input_path} 中未找到 parquet file")
+            print(f"❌ 在 {input_path} in未Found parquet file")
             return
         
-        print(f"找到 {len(parquet_files)} 个 parquet file\n")
+        print(f"Found {len(parquet_files)} 个 parquet file\n")
         
         success_count = 0
         for parquet_file in tqdm(parquet_files, desc="处理file"):
@@ -248,9 +248,9 @@ def main():
                 if process_parquet_file(parquet_file, parquet_file):
                     success_count += 1
             else:
-                # 创建新file
+                # 创建newfile
                 if args.output:
-                    # 如果指定了输出目录，保持相对路径结构
+                    # e.g.果指定了输出directory，保持相对路径结构
                     output_dir = Path(args.output)
                     relative_path = parquet_file.relative_to(input_path)
                     output_file = output_dir / relative_path
@@ -258,7 +258,7 @@ def main():
                     if process_parquet_file(parquet_file, output_file):
                         success_count += 1
                 else:
-                    # 默认在同目录创建 _fixed file
+                    # 默认在同directory创建 _fixed file
                     if process_parquet_file(parquet_file):
                         success_count += 1
         

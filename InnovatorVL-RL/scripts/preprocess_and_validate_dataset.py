@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-完整预处理脚本：不仅统一 features 类型，还统一数据内容
+Complete preprocessing script: Unify not only feature types but also data content
 - 统一 images 字段类型
-- 确保每个样本的 <image> token 数量与图像数量匹配
+- Ensure each sample's <image> token count matches image count
 - Validating data一致性
 """
 
@@ -51,7 +51,7 @@ def preprocess_dataset(input_path, output_path=None):
     """完整预处理数据集"""
     input_path = Path(input_path)
     if not input_path.exists():
-        print(f"❌ file不存在: {input_path}")
+        print(f"❌ File does not exist: {input_path}")
         return False
     
     if output_path is None:
@@ -106,7 +106,7 @@ def preprocess_dataset(input_path, output_path=None):
                     print(f"   ✅ 转换success")
                 except Exception as e:
                     print(f"   ⚠️  cast failed: {e}")
-                    print(f"   使用 from_dict 重新创建...")
+                    print(f"   使用 from_dict 重new创建...")
                     data_dict = {col: [dataset[j][col] for j in range(len(dataset))] 
                                 for col in dataset.column_names}
                     dataset = Dataset.from_dict(data_dict, features=new_features)
@@ -114,7 +114,7 @@ def preprocess_dataset(input_path, output_path=None):
             else:
                 print(f"   ✓ 已经是正确的类型")
         
-        # 4. 确保 token 和图像数量匹配
+        # 4. 确保 token and图像数量匹配
         print("\n4. 确保 <image> token 数量与图像数量匹配...")
         fixed_count = 0
         total_count = len(dataset)
@@ -141,7 +141,7 @@ def preprocess_dataset(input_path, output_path=None):
             
             return sample
         
-        dataset = dataset.map(fix_sample, desc="修复 token 和图像数量匹配")
+        dataset = dataset.map(fix_sample, desc="修复 token and图像数量匹配")
         print(f"   ✅ 修复了 {fixed_count}/{total_count} 个样本")
         
         # 5. 验证结果
@@ -155,7 +155,7 @@ def preprocess_dataset(input_path, output_path=None):
                 print(f"   ⚠️  images 字段类型: {type(img_feature)}")
         
         # 随机检查几个样本
-        print(f"\n   随机检查 5 个样本的 token 和图像数量匹配:")
+        print(f"\n   随机检查 5 个样本的 token and图像数量匹配:")
         import random
         indices = random.sample(range(min(5, len(dataset))), min(5, len(dataset)))
         for idx in indices:
@@ -171,7 +171,7 @@ def preprocess_dataset(input_path, output_path=None):
         print(f"\n6. 保存预处理后的数据集...")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         dataset.to_parquet(str(output_path))
-        print(f"   ✅ 保存到: {output_path}")
+        print(f"   ✅ 保存to: {output_path}")
         
         return True
         
@@ -182,10 +182,10 @@ def preprocess_dataset(input_path, output_path=None):
         return False
 
 def main():
-    parser = argparse.ArgumentParser(description="完整预处理数据集：统一格式并验证一致性")
-    parser.add_argument("input", help="输入的 parquet file路径或目录")
-    parser.add_argument("-o", "--output", help="输出file路径或目录（可选）")
-    parser.add_argument("-r", "--recursive", action="store_true", help="递归处理目录中的所有 parquet file")
+    parser = argparse.ArgumentParser(description="完整预处理数据集：统一formatand验证一致性")
+    parser.add_argument("input", help="输入的 parquet file路径或directory")
+    parser.add_argument("-o", "--output", help="输出file路径或directory（可选）")
+    parser.add_argument("-r", "--recursive", action="store_true", help="递归处理directoryin的all parquet file")
     parser.add_argument("--overwrite", action="store_true", help="覆盖原file")
     
     args = parser.parse_args()
@@ -204,10 +204,10 @@ def main():
             parquet_files = list(input_path.glob("*.parquet"))
         
         if not parquet_files:
-            print(f"❌ 未找到 parquet file")
+            print(f"❌ 未Found parquet file")
             return
         
-        print(f"找到 {len(parquet_files)} 个 parquet file\n")
+        print(f"Found {len(parquet_files)} 个 parquet file\n")
         
         success_count = 0
         for parquet_file in tqdm(parquet_files, desc="处理file"):

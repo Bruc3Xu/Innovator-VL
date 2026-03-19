@@ -83,7 +83,7 @@ JUDGE_CONFIG_EXAMPLES = {
         "config": {
             "judge_url": "http://your-vllm-server:8000/v1",
             "model_name": "your-judge-model",  # Your judge model name
-            "api_key": "dummy-key",  # vLLM兼容模式
+            "api_key": "dummy-key",  # vLLM compatible mode
             "timeout": 30.0,
             "max_retries": 3,
             "system_prompt_version": "v1.0"
@@ -128,13 +128,13 @@ TRAINING_CONFIG_TEMPLATE = """
 judge:
   type: vllm  # or "enhanced", "rule"
   config:
-    # vLLM配置
+    # vLLM configuration
     judge_url: ${JUDGE_MODEL_URL:http://localhost:8000/v1}
     model_name: ${JUDGE_MODEL_NAME:judge-model}
     api_key: ${JUDGE_API_KEY:dummy-key}
     timeout: 30.0
     max_retries: 3
-    # 评分权重
+    # Scoring weights
     thinking_weight: 0.30
     answer_weight: 0.60
     format_weight: 0.10

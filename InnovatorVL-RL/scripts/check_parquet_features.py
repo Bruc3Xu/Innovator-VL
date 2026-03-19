@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-诊断脚本：检查 parquet file的Feature type问题
-用于定位 AttributeError: 'Value' object has no attribute 'items' 错误
+Diagnostic script: Check parquet file Feature type issues
+Used to locate AttributeError: 'Value' object has no attribute 'items' 错误
 """
 
 import sys
@@ -9,7 +9,7 @@ from pathlib import Path
 from datasets import load_dataset, Features, Image as DatasetImage, Value, Sequence
 
 def check_dataset_features(parquet_path):
-    """检查数据集的Feature type"""
+    """Check dataset Feature type"""
     print(f"\n{'='*80}")
     print(f"检查file: {parquet_path}")
     print(f"{'='*80}\n")
@@ -26,7 +26,7 @@ def check_dataset_features(parquet_path):
         print("Feature type检查")
         print("=" * 80)
         print(f"features 类型: {type(dataset.features)}")
-        print(f"是否为 Features 对象: {isinstance(dataset.features, Features)}")
+        print(f"是否as Features 对象: {isinstance(dataset.features, Features)}")
         
         if not isinstance(dataset.features, Features):
             print(f"❌ 错误: features 不是 Features 对象！")
@@ -73,7 +73,7 @@ def check_dataset_features(parquet_path):
                     else:
                         print(f"    ⚠️  不是 Sequence 类型")
                 
-                # Special checkDict type fields（如 reward_model, vanilla_prompt）
+                # Special checkDict type fields（e.g. reward_model, vanilla_prompt）
                 if isinstance(feature, dict):
                     print(f"  ⚠️  这是字典类型的特征（需要Special check）")
                     print(f"  Dict keys: {list(feature.keys())}")
@@ -90,7 +90,7 @@ def check_dataset_features(parquet_path):
                                 if isinstance(v2, Value):
                                     print(f"          ⚠️  嵌套值是 Value 对象")
                 
-                # 检查是否是 List 包含字典（如 vanilla_prompt）
+                # 检查是否是 List 包含字典（e.g. vanilla_prompt）
                 if hasattr(feature, "feature"):
                     inner = feature.feature
                     if isinstance(inner, dict):
@@ -206,7 +206,7 @@ def check_dataset_features(parquet_path):
                     needs_conversion = True  # 继续尝试方法 2
                 
                 if needs_conversion:
-                    print("\n尝试方法 2: Workaround (移除并重新添加 images 字段)...")
+                    print("\n尝试方法 2: Workaround (移除and重new添加 images 字段)...")
                     try:
                         from datasets import Dataset
                         # 先移除 images 字段
@@ -214,13 +214,13 @@ def check_dataset_features(parquet_path):
                         temp_features = Features(temp_features_dict)
                         dataset_temp = dataset.cast(temp_features)
                         
-                        # 重新添加 images 字段，使用正确的Feature type
+                        # 重new添加 images 字段，使用正确的Feature type
                         data_dict = {col: [dataset_temp[j][col] for j in range(len(dataset_temp))] for col in dataset_temp.column_names}
                         # 获取原始 images 数据
                         original_images = [dataset[j]["images"] for j in range(len(dataset))]
                         data_dict["images"] = original_images
                         
-                        # 创建新的 features，包含正确类型的 images
+                        # 创建new的 features，包含正确类型的 images
                         final_features = Features({**temp_features_dict, "images": Sequence(DatasetImage(decode=True))})
                         dataset = Dataset.from_dict(data_dict, features=final_features)
                         
@@ -258,19 +258,19 @@ def check_dataset_features(parquet_path):
             "prompt_type": ["test"],
         }
         
-        # 创建标准的 Features（只包含 dataset 中存在的字段）
+        # 创建标准的 Features（只包含 dataset in存在的字段）
         test_features_dict = {
             "images": Sequence(DatasetImage(decode=True)),
         }
-        # 添加 dataset 中的其他字段（如果存在）
+        # 添加 dataset in的其他字段（e.g.果存在）
         for col in dataset.column_names:
             if col != "images" and col not in test_features_dict:
                 if col in dataset.features:
                     test_features_dict[col] = dataset.features[col]
         
-        # 只保留 test_data 中存在的字段
+        # 只保留 test_data in存在的字段
         test_data_filtered = {k: v for k, v in test_data.items() if k in test_features_dict}
-        # 为缺失的字段添加默认值
+        # as缺失的字段添加默认值
         for col in test_features_dict:
             if col not in test_data_filtered:
                 if col == "images":
@@ -284,7 +284,7 @@ def check_dataset_features(parquet_path):
         test_dataset = Dataset.from_dict(test_data_filtered, features=test_features)
         
         print(f"测试数据集 features 类型: {type(test_dataset.features)}")
-        print(f"测试数据集是否为 Features: {isinstance(test_dataset.features, Features)}")
+        print(f"测试数据集是否as Features: {isinstance(test_dataset.features, Features)}")
         if "images" in test_dataset.features:
             print(f"测试数据集 images 特征: {test_dataset.features['images']}")
         
@@ -295,8 +295,8 @@ def check_dataset_features(parquet_path):
             print(f"原始数据集 images 特征: {dataset.features.get('images', 'N/A')}")
             combined = concatenate_datasets([test_dataset, dataset])
             print("✅ 连接success！")
-            print(f"合并后Dataset size: {len(combined)}")
-            print(f"合并后 images 特征: {combined.features.get('images', 'N/A')}")
+            print(f"合and后Dataset size: {len(combined)}")
+            print(f"合and后 images 特征: {combined.features.get('images', 'N/A')}")
         except Exception as e:
             print(f"❌ 连接failed: {type(e).__name__}: {e}")
             import traceback
@@ -314,14 +314,14 @@ def check_dataset_features(parquet_path):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("用法: python check_parquet_features.py <parquet_file_path>")
-        print("\n示例:")
+        print("Usage: python check_parquet_features.py <parquet_file_path>")
+        print("\nExample:")
         print("  python check_parquet_features.py /path/to/merged_clean_full.parquet")
         sys.exit(1)
     
     parquet_path = Path(sys.argv[1])
     if not parquet_path.exists():
-        print(f"❌ file不存在: {parquet_path}")
+        print(f"❌ File does not exist: {parquet_path}")
         sys.exit(1)
     
     success = check_dataset_features(parquet_path)

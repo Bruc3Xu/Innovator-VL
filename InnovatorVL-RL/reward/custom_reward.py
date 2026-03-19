@@ -405,7 +405,7 @@ def relax_exact_match(predict_str: str, ground_truth: str, relax_portion: float 
 
 
 def llm_as_judge_sync(predict_str, ground_truth, extra_info):
-    """原简单版LLM judge，保持兼容性，带超时和重试机制"""
+    """Original simple LLM judge, maintains compatibility, with timeout and retry mechanism"""
     # Handle list inputs
     if isinstance(ground_truth, list):
         ground_truth = ", ".join(str(item) for item in ground_truth) if ground_truth else ""
@@ -429,7 +429,7 @@ def llm_as_judge_sync(predict_str, ground_truth, extra_info):
         "model": VLLM_JUDGE_MODEL,
     }
     
-    # 重试机制
+    # Retry mechanism
     last_exception = None
     for attempt in range(JUDGE_MAX_RETRIES + 1):
         try:
@@ -440,7 +440,7 @@ def llm_as_judge_sync(predict_str, ground_truth, extra_info):
             except (ValueError, KeyError, IndexError, AttributeError) as e:
                 logger.warning(f"Failed to parse judge response (attempt {attempt + 1}/{JUDGE_MAX_RETRIES + 1}): {e}")
                 if attempt < JUDGE_MAX_RETRIES:
-                    time.sleep(JUDGE_RETRY_DELAY * (attempt + 1))  # 指数退避
+                    time.sleep(JUDGE_RETRY_DELAY * (attempt + 1))  # Exponential backoff
                     continue
                 return 0
         except Exception as e:
@@ -457,7 +457,7 @@ def llm_as_judge_sync(predict_str, ground_truth, extra_info):
                     f"Judge model call failed (attempt {attempt + 1}/{JUDGE_MAX_RETRIES + 1}): {e}. "
                     f"Retrying in {JUDGE_RETRY_DELAY * (attempt + 1):.1f}s..."
                 )
-                time.sleep(JUDGE_RETRY_DELAY * (attempt + 1))  # 指数退避
+                time.sleep(JUDGE_RETRY_DELAY * (attempt + 1))  # Exponential backoff
                 continue
             else:
                 logger.error(f"Judge model call failed after {attempt + 1} attempts: {e}")
@@ -548,7 +548,7 @@ Pay special attention to:
         "response_format": {"type": "json_object"},  # 强制JSON格式（如果兼容）
     }
 
-    # 重试机制
+    # Retry mechanism
     last_exception = None
     content = None
     
@@ -615,7 +615,7 @@ Pay special attention to:
                     f"Judge model call failed (attempt {attempt + 1}/{JUDGE_MAX_RETRIES + 1}): {e}. "
                     f"Retrying in {JUDGE_RETRY_DELAY * (attempt + 1):.1f}s..."
                 )
-                time.sleep(JUDGE_RETRY_DELAY * (attempt + 1))  # 指数退避
+                time.sleep(JUDGE_RETRY_DELAY * (attempt + 1))  # Exponential backoff
                 continue
             else:
                 logger.error(f"Judge model call failed after {attempt + 1} attempts: {e}")
