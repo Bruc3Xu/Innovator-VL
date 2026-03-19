@@ -21,7 +21,7 @@ from aiak_training_llm.models.qwen_vl.qwen2_vl_layer_spec import \
     get_adapeter_layer_with_spec
 from aiak_training_llm.utils import is_te_min_version
 
-from .rice_vision_model import apply_rotary_pos_emb_vision
+from .vision_model import apply_rotary_pos_emb_vision
 
 
 def get_vision_layer_with_spec() -> ModuleSpec:

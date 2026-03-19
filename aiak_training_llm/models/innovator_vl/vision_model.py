@@ -11,7 +11,6 @@ from aiak_training_llm.models.qwen_vl.vision_transformer_block import Transforme
 from aiak_training_llm.models.qwen_vl.vision_model import _rotate_half, apply_rotary_pos_emb_vision
 from aiak_training_llm.models.innovator_vl.innovator_vl_config import VisionConfig
 from megatron.training import print_rank_0
-from aiak_training_llm.models.custom.common.local_norm import FusedLayerNorm
 
 def _rotate_half(x):
     x1, x2 = torch.chunk(x, 2, dim=-1)

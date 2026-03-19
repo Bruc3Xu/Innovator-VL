@@ -5,8 +5,9 @@ from dataclasses import asdict
 
 from aiak_training_llm.models.factory import register_model_provider
 from aiak_training_llm.models.innovator_vl.innovator_vl_layer_spec import (
-    get_adapeter_layer_with_spec, get_qwen_layer_with_te_spec,
-    get_vision_layer_with_spec)
+    get_qwen_layer_with_te_spec, get_vision_layer_with_spec)
+from aiak_training_llm.models.qwen_vl.qwen2_vl_layer_spec import \
+    get_adapeter_layer_with_spec
 from aiak_training_llm.models.innovator_vl.innovator_vl_config import (
     get_adapeter_config, get_vision_config)
 from aiak_training_llm.utils import (build_transformer_config, get_args,
