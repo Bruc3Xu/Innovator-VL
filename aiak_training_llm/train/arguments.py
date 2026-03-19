@@ -358,9 +358,9 @@ def _add_extra_training_args(parser: argparse.ArgumentParser):
                        choices=['torch', 'torch_dist', 'zarr'],
                        help='Checkpoint format to use. Default: torch')
     group.add_argument("--length-sort-pool-size", type=int, default=0,
-                    help=">0 启用局部长度池化排序；推荐为 batch_size 的 10~50 倍")
+                    help=">0 enables local length pooling sort; recommended to be 10-50x batch_size")
     group.add_argument("--length-sort-desc", action="store_true",
-                    help="按长度从长到短")
+                    help="Sort by length from long to short")
 
     return parser
 

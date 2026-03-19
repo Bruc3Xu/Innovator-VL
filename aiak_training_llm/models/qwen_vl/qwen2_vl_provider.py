@@ -18,7 +18,7 @@ from .qwen2_vl_layer_spec import (
     get_qwen_layer_with_spec,
 )
 from .qwen2_vl_config import (
-    get_adapeter_config,
+    get_adapter_config,
     get_vision_config,
 )
 
@@ -58,7 +58,7 @@ def qwen2vl_model_provider(
     model_family = get_model_family(args.model_name)
     for k, v in asdict(get_vision_config(model_family, args.model_name)).items():
         setattr(vision_config, k, v)
-    for k, v in asdict(get_adapeter_config(model_family)).items():
+    for k, v in asdict(get_adapter_config(model_family)).items():
         setattr(adapter_config, k, v)
 
     setattr(language_config, "image_token_id", 151655)

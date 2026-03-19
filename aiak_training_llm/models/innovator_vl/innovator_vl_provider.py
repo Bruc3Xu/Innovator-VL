@@ -9,7 +9,7 @@ from aiak_training_llm.models.innovator_vl.innovator_vl_layer_spec import (
 from aiak_training_llm.models.qwen_vl.qwen2_vl_layer_spec import \
     get_adapeter_layer_with_spec
 from aiak_training_llm.models.innovator_vl.innovator_vl_config import (
-    get_adapeter_config, get_vision_config)
+    get_adapter_config, get_vision_config)
 from aiak_training_llm.utils import (build_transformer_config, get_args,
                                      print_rank_0)
 from aiak_training_llm.utils.constants import VisionLanguageModelFamilies
@@ -52,7 +52,7 @@ def rice_vl_model_provider(
     model_family = get_model_family(args.model_name)
     for k, v in asdict(get_vision_config(model_family, args.model_name)).items():
         setattr(vision_config, k, v)
-    for k, v in asdict(get_adapeter_config(model_family)).items():
+    for k, v in asdict(get_adapter_config(model_family)).items():
         setattr(adapter_config, k, v)
     # print(vision_config)
     setattr(language_config, "image_token_id", 151655)

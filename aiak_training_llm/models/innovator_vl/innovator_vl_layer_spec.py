@@ -1,6 +1,6 @@
 import torch
 from megatron.core.extensions.transformer_engine import (
-    TEDotProductAttention, TELayerNormColumnParallelLinear, TELinear,
+    TEDotProductAttention, TELayerNormColumnParallelLinear,
     TERowParallelLinear)
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core.transformer.attention import (SelfAttention,
@@ -15,11 +15,7 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import (
     TransformerLayer, TransformerLayerSubmodules)
 
-from aiak_training_llm.models.custom.common.local_norm import LocalNorm
 from aiak_training_llm.models.dispatch import multiacc_modules
-from aiak_training_llm.models.qwen_vl.qwen2_vl_layer_spec import \
-    get_adapeter_layer_with_spec
-from aiak_training_llm.utils import is_te_min_version
 
 from .vision_model import apply_rotary_pos_emb_vision
 

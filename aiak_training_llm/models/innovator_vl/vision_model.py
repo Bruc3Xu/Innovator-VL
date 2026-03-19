@@ -18,7 +18,7 @@ def _rotate_half(x):
 
 
 def apply_rotary_pos_emb_vision(t, freqs, config, cu_seqlens=None, rotary_interleaved=False):
-    """" Apply rotation to positional embedding """
+    """Apply rotation to positional embedding."""
     orig_dtype = t.dtype
     t = t.float()
     if cu_seqlens is not None:
@@ -33,7 +33,7 @@ def apply_rotary_pos_emb_vision(t, freqs, config, cu_seqlens=None, rotary_interl
 
 
 class PatchEmbed(torch.nn.Module):
-    """" Patch Embedding """
+    """Patch Embedding module."""
     def __init__(
         self,
         patch_size: int = 14,
@@ -58,7 +58,7 @@ class PatchEmbed(torch.nn.Module):
 
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        """" Forward pass """
+        """Forward pass."""
         target_dtype = self.proj.weight.dtype
         hidden_states = hidden_states.view(
             # -1, self.in_channels, self.temporal_patch_size, self.patch_size, self.patch_size
@@ -69,7 +69,7 @@ class PatchEmbed(torch.nn.Module):
 
 
 class VisionRotaryEmbedding(torch.nn.Module):
-    """" Rotary Position Embedding """
+    """Rotary Position Embedding module."""
     def __init__(self, dim: int, theta: float = 10000.0) -> None:
         super().__init__()
         inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.float) / dim))
@@ -220,9 +220,8 @@ class RiceViTModel(VisionModel):
 
         cu_seqlens = []
         cumulative_length = 0
-        cu_seqlens.append(cumulative_length)  # 起始为0
+        cu_seqlens.append(cumulative_length)  # Start from 0
         for length in tokens_per_sample:
-
             cumulative_length += int(length + 1)
             cu_seqlens.append(cumulative_length)
 
@@ -256,7 +255,7 @@ class RiceViTModel(VisionModel):
             start_idx += 1
             patch_output.append(x[start_idx:start_idx+tokens_per_sample[i]])
             start_idx += tokens_per_sample[i]
-        patch_output = torch.cat(patch_output, dim=0)  # [原始seq_len, hidden_size]
+        patch_output = torch.cat(patch_output, dim=0)  # [original_seq_len, hidden_size]
         return patch_output, None
 
 
@@ -302,9 +301,8 @@ class RiceViTModel(VisionModel):
         output["class_embedding"] = self.class_embedding.clone()
         cu_seqlens = []
         cumulative_length = 0
-        cu_seqlens.append(cumulative_length)  # 起始为0
+        cu_seqlens.append(cumulative_length)  # Start from 0
         for length in tokens_per_sample:
-
             cumulative_length += int(length + 1)
             cu_seqlens.append(cumulative_length)
 
@@ -338,6 +336,6 @@ class RiceViTModel(VisionModel):
             start_idx += 1
             patch_output.append(x[start_idx:start_idx+tokens_per_sample[i]])
             start_idx += tokens_per_sample[i]
-        patch_output = torch.cat(patch_output, dim=0)  # [原始seq_len, hidden_size]
+        patch_output = torch.cat(patch_output, dim=0)  # [original_seq_len, hidden_size]
         output["before_adapter"] = patch_output.clone()
         return output

@@ -1,8 +1,7 @@
 import torch
 from dataclasses import dataclass
+from typing import Tuple
 
-from megatron.training.activations import quick_gelu
-from torch.nn.functional import gelu
 from aiak_training_llm.utils.constants import VisionLanguageModelFamilies
 from aiak_training_llm.models.factory import register_model_config
 
@@ -167,8 +166,8 @@ class VisionConfig:
     hidden_size: int
     ffn_hidden_size: int
     num_attention_heads: int
-    patch_size: tuple[int]
-    image_size: tuple[int]
+    patch_size: Tuple[int]
+    image_size: Tuple[int]
     kv_channels: int
     normalization: str
     swiglu: bool = False
@@ -188,7 +187,7 @@ class VisionConfig:
 
 
 def get_vision_config(model_family, model_name):
-    """ get vision config """
+    """Get vision config."""
     config = VisionConfig(
         num_layers=24,
         hidden_size=1024,
@@ -222,8 +221,8 @@ def get_vision_config(model_family, model_name):
     return config
 
 
-def get_adapeter_config(model_family):
-    """ get adapeter config """
+def get_adapter_config(model_family):
+    """Get adapter config."""
     config = AdapterConfig(
         normalization="LayerNorm",
         add_bias_linear=True,
