@@ -6,7 +6,7 @@
 <div align="center">
 
 🤗 **[Models & Datasets](https://huggingface.co/collections/InnovatorLab/innovator-vl)** |
-🔗 **[Technical Report](https://arxiv.org/abs/2412.xxxxx)** |
+🔗 **[Technical Report](https://arxiv.org/pdf/2601.19325)** |
 🖥️ **[Demo](https://huggingface.co/spaces/InnovatorLab/Innovator-VL)**
 
 </div>
@@ -52,12 +52,20 @@
   <a href="https://github.com/NVIDIA/Megatron-LM">
     <img src="https://img.shields.io/badge/Built%20with-Megatron--LM-76B900?logo=nvidia" alt="Megatron-LM">
   </a>
+  <!-- WeChat -->
+  <a href="https://mp.weixin.qq.com/s/_SuNLvgNsoOA8HWrvwRGsw?scene=1">
+    <img src="https://img.shields.io/badge/-WeChat@机器之心-000000?logo=wechat&logoColor=07C160" alt="WeChat">
+  </a>
 </p>
 
 ---
 
 ## 📰 News
-...
+* **`2026.1.29`** 🤗🤗 Our model has been officially released at the ["Agentic Science at Scale" workshop](https://mp.weixin.qq.com/s/8yl4bK8DL2UIsreXcjdbvg)!
+* **`2026.1.29`** 🤗🤗 We’ve already adapted it to [SciMaster](https://scimaster.bohrium.com/). Come and give it a try!
+* **`2026.1.28`** 🤗🤗 We release the [Innovator-VL Technical Report](https://arxiv.org/pdf/2601.19325)!
+* **`2026.1.26`** 🤗🤗 We release all of our code, model, data, and pipeline! Check out the [InnovatorVL collection on Hugging Face](https://huggingface.co/collections/InnovatorLab/innovator-vl)
+
 
 ## 📖 Table of Contents
 - [Introduction](#introduction)
@@ -138,7 +146,15 @@ Innovator-VL adopts a principled architecture design optimized for scientific un
 <div align="center">
 <img src="asset/bar_figure_01.png" width="100%" alt="Performance Comparison">
 <br>
-<em><strong>Figure 3:</strong> Performance comparison with state-of-the-art MLLMs on scientific and general benchmarks</em>
+<em><strong>Figure 3:</strong> Performance comparison with state-of-the-art MLLMs on general vision, reasoning, anb scientific benchmarks</em>
+</div>
+
+<br>
+
+<div align="center">
+<img src="asset/main_results.png" width="100%" alt="main results">
+<br>
+<em><strong>Figure 4:</strong> Detailed comparison with state-of-the-art MLLMs across general, mathematical reasoning, and scientific benchmarks</em>
 </div>
 
 ## 🚀 Training Pipeline
@@ -284,7 +300,7 @@ bash run_example.sh
 
 ## 🔬 Evaluation
 
-Innovator-VL is evaluated using the **[lmms-eval](https://github.com/EvolvingLMMs-Lab/lmms-eval)** framework, enabling standardized, reproducible evaluation across **general vision**, **mathematics reasoning**, and **scientific domains**.
+Innovator-VL is evaluated using the **[lmms-eval](https://github.com/EvolvingLMMs-Lab/lmms-eval)** framework, enabling standardized, reproducible evaluation across **general vision**, **mathematical reasoning**, and **scientific domains**.
 
 We provide an official evaluation script that covers all supported benchmarks.
 
@@ -396,7 +412,12 @@ Innovator-VL/
 If you find Innovator-VL helpful for your research, please consider citing our technical report:
 
 ```bibtex
-
+@article{wen2026innovator,
+  title={Innovator-VL: A Multimodal Large Language Model for Scientific Discovery},
+  author={Wen, Zichen and Yang, Boxue and Chen, Shuang and Zhang, Yaojie and Han, Yuhang and Ke, Junlong and Wang, Cong and others},
+  journal={arXiv preprint arXiv:2601.19325},
+  year={2026}
+}
 ```
 
 ## 🙏 Acknowledgments
@@ -409,6 +430,7 @@ We express our sincere gratitude to the open-source community for their invaluab
 - **[AReaL](https://github.com/inclusionAI/AReaL)**: A Large-Scale Asynchronous Reinforcement Learning Freamwork
 - **[lmms-eval](https://github.com/EvolvingLMMs-Lab/lmms-eval)**: A standardized evaluation framework for Large Multimodal Models
 - **[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)**: Efficient, scalable training for large language models
+- **[Bee](https://huggingface.co/datasets/Open-Bee/Honey-Data-15M)**: A High-Quality Corpus and Full-Stack Suite to Unlock Advanced Fully Open MLLMs
 - **[OpenMMReasoner](https://github.com/EvolvingLMMs-Lab/OpenMMReasoner)**: Pushing the Frontiers for Multimodal Reasoning with an Open and General Recipe
 - **[SGLang](https://github.com/sgl-project/sglang)**: SGLang is a fast serving framework for large language models and vision language models
 - **[vLLM](https://github.com/vllm-project/vllm)**: A high-throughput and memory-efficient inference and serving engine for LLMs
