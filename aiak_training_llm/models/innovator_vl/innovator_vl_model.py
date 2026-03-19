@@ -362,6 +362,9 @@ class InnovatorVl(MegatronModule):
                 #         video_embeddings.shape[0]
                 #     )
         else:
+            # FIXME: vision_embeddings is assigned but never used when pre_process=True.
+            # This is a potential bug when using pipeline parallelism with vision model
+            # on a separate stage. Currently not triggered in normal training configs.
             vision_embeddings = self.encoder_hidden_state.squeeze(0) if self.encoder_hidden_state is not None else None
 
         if not self.add_decoder:
@@ -395,15 +398,10 @@ class InnovatorVl(MegatronModule):
                     combined_embeddings = language_embeddings.masked_scatter(images_mask, image_embeddings)
 
                 if pixel_values_videos is not None and self.config.video_token_id in input_ids:
-                    video_token_id = self.config.video_token_id
-                    videos_mask = (
-                        (input_ids == video_token_id).transpose(0, 1)
-                        .unsqueeze(-1)
-                        .expand_as(language_embeddings)
-                        .to(language_embeddings.device)
+                    raise NotImplementedError(
+                        "Video input is not supported in InnovatorVl model. "
+                        "Please use a different model that supports video input."
                     )
-                    video_embeddings = video_embeddings.to(language_embeddings.device, language_embeddings.dtype)
-                    combined_embeddings = language_embeddings.masked_scatter(videos_mask, video_embeddings)
 
             if self.config.context_parallel_size > 1:
                 combined_embeddings = get_inputs_on_this_cp_rank(combined_embeddings)
@@ -450,6 +448,6 @@ def _load_state_dict_hook_ignore_param_names(
     for param_name in param_names:
         if param_name in incompatible_keys.missing_keys:
             logging.getLogger(__name__).warning(
-                f"{param_name} being removed from incompatible_keys.missing_keys in LlavaModel"
+                f"{param_name} being removed from incompatible_keys.missing_keys in InnovatorVlModel"
             )
             incompatible_keys.missing_keys.remove(param_name)

@@ -20,7 +20,6 @@ class VisionConfig:
     num_attention_heads: int
     patch_size: tuple[int]
     image_size: tuple[int]
-    ffn_hidden_size: int
     kv_channels: int
     normalization: str
     swiglu: bool = False

@@ -3,7 +3,7 @@
 from .qwen import qwen_config, qwen_provider
 
 from .qwen_vl import qwen2_vl_config, qwen2_vl_provider
-from .innovator_vl import innovator_vl_provider
+from .innovator_vl import innovator_vl_provider as rice_vl_model_provider
 
 from .factory import (
     get_support_model_archs,

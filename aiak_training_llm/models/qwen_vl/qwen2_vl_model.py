@@ -458,6 +458,6 @@ def _load_state_dict_hook_ignore_param_names(
     for param_name in param_names:
         if param_name in incompatible_keys.missing_keys:
             logging.getLogger(__name__).warning(
-                f"{param_name} being removed from incompatible_keys.missing_keys in LlavaModel"
+                f"{param_name} being removed from incompatible_keys.missing_keys in Qwen2VLModel"
             )
             incompatible_keys.missing_keys.remove(param_name)

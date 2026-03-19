@@ -287,7 +287,7 @@ def train_valid_test_dataset_provider(train_val_test_num_samples):
 
 @register_model_trainer(
     model_family=[
-        constants.VisionLanguageModelFamilies.LLAVA_OV_1_5],
+        constants.VisionLanguageModelFamilies.INNOVATOR_VL],
         training_phase=constants.TrainingPhase.PRETRAIN)
 def default_pretrain_trainer(train_args):
     """build trainer"""
