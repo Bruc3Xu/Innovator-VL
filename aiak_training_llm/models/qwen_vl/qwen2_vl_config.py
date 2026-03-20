@@ -4,6 +4,7 @@ import torch
 from dataclasses import dataclass
 from typing import Tuple
 
+from megatron.training.activations import quick_gelu
 from aiak_training_llm.utils.constants import VisionLanguageModelFamilies
 from aiak_training_llm.models.factory import register_model_config
 
