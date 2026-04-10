@@ -16,8 +16,8 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.utils import make_viewless_tensor
 from torch import Tensor
 
-from aiak_training_llm.models.innovator_vl.vision_model import (
-    RiceViTModel, VisionModel)
+from aiak_training_llm.models.innovator_vl.vision_model import RiceViTModel
+from aiak_training_llm.models.innovator_vl.hybrid_vision_model import HybridVisionModel
 from aiak_training_llm.models.qwen import QwenModel
 from aiak_training_llm.models.qwen_vl.adapter import Adapter
 from aiak_training_llm.models.qwen_vl.utils import get_inputs_on_this_cp_rank
@@ -146,6 +146,7 @@ class InnovatorVl(MegatronModule):
         fp16_lm_cross_entropy: bool = False,
         share_embeddings_and_output_weights: bool = True,
         seq_len_interpolation_factor: float = None,
+        use_hybrid_vision_model: bool = False,
     ) -> None:
         super().__init__(config=language_config)
 
@@ -161,16 +162,16 @@ class InnovatorVl(MegatronModule):
 
         #  define the vision model and the projection from vision model outputs to language model inputs.
         if self.add_encoder:
-            # if vision_config.normalization == "RMSNorm":
-            self.vision_model = RiceViTModel(
-                vision_config,
-                vision_layer_spec,
-            )
-            # else:
-            #     self.vision_model = VisionModel(
-            #         vision_config,
-            #         vision_layer_spec,
-            #     )
+            if use_hybrid_vision_model:
+                self.vision_model = HybridVisionModel(
+                    config=vision_config,
+                    transformer_layer_spec=vision_layer_spec,
+                )
+            else:
+                self.vision_model = RiceViTModel(
+                    vision_config,
+                    vision_layer_spec,
+                )
             # Map (intermediate) vision model outputs to the language model input dimension.
             # from megatron.training import print_rank_0
             # print_rank_0(f"vision_config.hidden_size: {vision_config.hidden_size}")
@@ -243,9 +244,9 @@ class InnovatorVl(MegatronModule):
             self.language_model.set_input_tensor(input_tensor[0])
 
     def freeze(
-        self, 
-        freeze_language_model: bool, 
-        freeze_vision_model: bool, 
+        self,
+        freeze_language_model: bool,
+        freeze_vision_model: bool,
         freeze_adapter: bool
     ):
         """Freeze model modules.
@@ -269,6 +270,19 @@ class InnovatorVl(MegatronModule):
             for param in module.parameters():
                 param.requires_grad = False
 
+        # If using hybrid vision model with frozen vision but unfrozen adapter,
+        # unfreeze the external encoder projectors and gates to allow training
+        # the fusion mechanism while keeping base encoders frozen.
+        if (
+            freeze_vision_model
+            and not freeze_adapter
+            and self.vision_model is not None
+            and isinstance(self.vision_model, HybridVisionModel)
+        ):
+            for name, param in self.vision_model.named_parameters():
+                if any(key in name for key in ["siglip_proj", "dinov3_proj", "siglip_gate", "dinov3_gate"]):
+                    param.requires_grad = True
+
     def forward(
         self,
         images: torch.Tensor,
@@ -280,6 +294,8 @@ class InnovatorVl(MegatronModule):
         labels: torch.Tensor = None,
         packed_seq_params: PackedSeqParams = None,
         inference_params: InferenceParams = None,
+        pixel_values_images_siglip: torch.Tensor = None,
+        pixel_values_images_dinov3: torch.Tensor = None,
         pixel_values_videos: torch.Tensor = None,
         video_grid_thw: torch.Tensor = None
     ) -> torch.Tensor:
@@ -322,8 +338,12 @@ class InnovatorVl(MegatronModule):
             image_embeddings = None
         elif self.add_encoder:
             if images is not None:
-                image_embeddings, window_index = self.vision_model(images, \
-                                    grid_thw=image_grid_thw) # [img_len, h_vision]
+                image_embeddings, window_index = self.vision_model(
+                    images,
+                    grid_thw=image_grid_thw,
+                    pixel_values_images_siglip=pixel_values_images_siglip,
+                    pixel_values_images_dinov3=pixel_values_images_dinov3,
+                )  # [img_len, h_vision]
                 image_embeddings = self.adapter(image_embeddings, window_index)
                 n_image_tokens = (input_ids == self.config.image_token_id).sum().item()
                 n_image_features = image_embeddings.shape[0]

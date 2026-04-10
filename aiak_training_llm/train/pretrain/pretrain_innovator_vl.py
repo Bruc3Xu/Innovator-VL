@@ -27,6 +27,9 @@ from aiak_training_llm.data.multimodal.dataloader_provider import (
     get_train_loader
 )
 from aiak_training_llm.data.multimodal.qwen2vl_task_encoder import Qwen2VLTaskEncoder
+from aiak_training_llm.data.multimodal.qwen2vl_multi_encoder_task_encoder import (
+    Qwen2VLMultiEncoderTaskEncoder,
+)
 
 stimer = StragglerDetector()
 
@@ -115,13 +118,27 @@ def get_batch(data_iterator):
 
     has_video = video_token_id in tokens
     has_image = image_token_id in tokens
+    use_hybrid_vision_model = getattr(args, "use_hybrid_vision_model", False)
     thw = None
     video_grid_thw = None
     imgs = None
+    pixel_values_images_siglip = None
+    pixel_values_images_dinov3 = None
     pixel_values_videos = None
     if has_image:
         imgs = tensor_parallel.broadcast_data(["imgs"], data, torch.float32)["imgs"]
         thw = tensor_parallel.broadcast_data(["image_grid_thw"], data, torch.int32)["image_grid_thw"]
+        if use_hybrid_vision_model:
+            pixel_values_images_siglip = tensor_parallel.broadcast_data(
+                ["pixel_values_images_siglip"],
+                data,
+                torch.float32
+            )["pixel_values_images_siglip"]
+            pixel_values_images_dinov3 = tensor_parallel.broadcast_data(
+                ["pixel_values_images_dinov3"],
+                data,
+                torch.float32
+            )["pixel_values_images_dinov3"]
     if has_video:
         pixel_values_videos = tensor_parallel.broadcast_data(
             ["pixel_values_videos"],
@@ -169,6 +186,8 @@ def get_batch(data_iterator):
     return (
         imgs,
         thw,
+        pixel_values_images_siglip,
+        pixel_values_images_dinov3,
         pixel_values_videos,
         video_grid_thw,
         tokens,
@@ -250,7 +269,7 @@ def forward_step(data_iterator, model):
 
     global stimer
     with stimer(bdata=True):
-        images, image_grid_thw, pixel_values_videos, video_grid_thw, \
+        images, image_grid_thw, pixel_values_images_siglip, pixel_values_images_dinov3, pixel_values_videos, video_grid_thw, \
         input_ids, position_ids, attention_mask, \
         labels, loss_mask, attn_mask_type, packed_seq_params \
             = get_batch(data_iterator)
@@ -267,6 +286,8 @@ def forward_step(data_iterator, model):
             attn_mask_type,
             labels,
             packed_seq_params,
+            pixel_values_images_siglip=pixel_values_images_siglip,
+            pixel_values_images_dinov3=pixel_values_images_dinov3,
             pixel_values_videos=pixel_values_videos,
             video_grid_thw=video_grid_thw
         )
@@ -278,7 +299,10 @@ def train_valid_test_dataset_provider(train_val_test_num_samples):
     """ Provides the datasets used by the trainer """
 
     args = get_args()
-    task_encoder = Qwen2VLTaskEncoder(args)
+    if getattr(args, "use_hybrid_vision_model", False):
+        task_encoder = Qwen2VLMultiEncoderTaskEncoder(args)
+    else:
+        task_encoder = Qwen2VLTaskEncoder(args)
     train_dataset = get_train_dataset(task_encoder)
     collator = build_sft_data_collator(DataCollatorForSeq2Seq)
     train_dataloader = get_train_loader(train_dataset, collator)

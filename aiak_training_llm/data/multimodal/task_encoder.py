@@ -47,6 +47,8 @@ class ImageTaskSample(Sample):
     attn_mask: torch.Tensor = None
     # (c, h, w)
     imgs: List[torch.Tensor] = None
+    pixel_values_images_siglip: List[torch.Tensor] = None
+    pixel_values_images_dinov3: List[torch.Tensor] = None
     pixel_values_videos: List[torch.Tensor] = None
 
 @dataclass
@@ -69,6 +71,8 @@ class ImageTaskSamplePacked(Sample):
     cu_lengths: List[int]  # Cumulative length of each sub-sample in this packed sample incl. text and image tokens (P,)
     attn_mask: torch.Tensor = None
     imgs: List[torch.Tensor] = None   # Input images
+    pixel_values_images_siglip: List[torch.Tensor] = None
+    pixel_values_images_dinov3: List[torch.Tensor] = None
     pixel_values_videos: List[torch.Tensor] = None
 
 # Typing for the resulting batch data after encode_batch()
@@ -93,6 +97,8 @@ class ImageTaskBatchPacked(Batch):
     cu_lengths: List[List[int]]  # Cumulative length of each sub-sample in each packed sample of the batch (N, P)
     attn_mask: torch.Tensor = None
     imgs: torch.Tensor = None # All image tiles stacked into a single tensor (num_tiles, C, H, W)
+    pixel_values_images_siglip: torch.Tensor = None
+    pixel_values_images_dinov3: torch.Tensor = None
     pixel_values_videos: torch.Tensor = None
 
 # Based on https://github.com/hiyouga/LLaMA-Factory/
@@ -242,9 +248,39 @@ class TaskEncoder(DefaultTaskEncoder[OCRSample, OCRSample, ImageTaskBatchPacked,
         else:
             return torch.tensor([[0]], dtype=torch.float32)
 
+    def process_siglip_images(self, samples: List[Union[ImageTaskSample, ImageTaskSamplePacked]]) \
+                                                                                    -> torch.Tensor:
+        """Stack auxiliary SigLIP image pixels, or a dummy tensor if absent."""
+        pixel_values_images_siglip = [
+            pixel_values_image
+            for s in samples
+            if s.pixel_values_images_siglip is not None
+            for pixel_values_image in s.pixel_values_images_siglip
+        ]
+        if len(pixel_values_images_siglip) > 0:
+            return torch.cat(pixel_values_images_siglip)
+        else:
+            return torch.tensor([[0]], dtype=torch.float32)
+
+    def process_dinov3_images(self, samples: List[Union[ImageTaskSample, ImageTaskSamplePacked]]) \
+                                                                                    -> torch.Tensor:
+        """Stack auxiliary DINOv3 image pixels, or a dummy tensor if absent."""
+        pixel_values_images_dinov3 = [
+            pixel_values_image
+            for s in samples
+            if s.pixel_values_images_dinov3 is not None
+            for pixel_values_image in s.pixel_values_images_dinov3
+        ]
+        if len(pixel_values_images_dinov3) > 0:
+            return torch.cat(pixel_values_images_dinov3)
+        else:
+            return torch.tensor([[0]], dtype=torch.float32)
+
     def batch(self, samples: List[Union[ImageTaskSample, ImageTaskSamplePacked]]) -> ImageTaskBatchPacked:
         """ Generates a batched version of the provided samples. """
         imgs = self.process_images(samples)
+        pixel_values_images_siglip = self.process_siglip_images(samples)
+        pixel_values_images_dinov3 = self.process_dinov3_images(samples)
         pixel_values_videos = self.process_videos(samples)
         max_seq_len = max(len(s.tokens) for s in samples)
         max_seq_len = min(max_seq_len, self.args.seq_length)
@@ -285,6 +321,8 @@ class TaskEncoder(DefaultTaskEncoder[OCRSample, OCRSample, ImageTaskBatchPacked,
             labels=labels,
             attn_mask=attn_masks,
             imgs=imgs,
+            pixel_values_images_siglip=pixel_values_images_siglip,
+            pixel_values_images_dinov3=pixel_values_images_dinov3,
             pixel_values_videos=pixel_values_videos,
             num_tiles=num_tiles,
             cu_lengths=cu_lengths,
@@ -332,6 +370,8 @@ class TaskEncoder(DefaultTaskEncoder[OCRSample, OCRSample, ImageTaskBatchPacked,
         packed_labels = []
         packed_masks = []
         packed_imgs = []
+        packed_siglip_images = []
+        packed_dinov3_images = []
         packed_videos = []
 
         current_length = 0
@@ -360,6 +400,10 @@ class TaskEncoder(DefaultTaskEncoder[OCRSample, OCRSample, ImageTaskBatchPacked,
             # Add the images
             if sample.imgs is not None:
                 packed_imgs += sample.imgs
+            if sample.pixel_values_images_siglip is not None:
+                packed_siglip_images += sample.pixel_values_images_siglip
+            if sample.pixel_values_images_dinov3 is not None:
+                packed_dinov3_images += sample.pixel_values_images_dinov3
             if sample.pixel_values_videos is not None:
                 packed_videos += sample.pixel_values_videos
             current_length += sample_len
@@ -379,6 +423,8 @@ class TaskEncoder(DefaultTaskEncoder[OCRSample, OCRSample, ImageTaskBatchPacked,
             labels=packed_labels,
             attn_mask=packed_masks,
             imgs=packed_imgs,
+            pixel_values_images_siglip=packed_siglip_images,
+            pixel_values_images_dinov3=packed_dinov3_images,
             pixel_values_videos=packed_videos,
             cu_lengths=torch.tensor(cu_lengths, dtype=torch.int32),
             max_length=max_length,

@@ -339,3 +339,261 @@ class RiceViTModel(VisionModel):
         patch_output = torch.cat(patch_output, dim=0)  # [original_seq_len, hidden_size]
         output["before_adapter"] = patch_output.clone()
         return output
+
+
+class HybridVisionModel(RiceViTModel):
+    """Rice-ViT backbone with optional SigLIP2 and DINOv3 feature fusion."""
+
+    def __init__(
+        self,
+        config: VisionConfig,
+        transformer_layer_spec: ModuleSpec,
+        spatial_merge_size: int = 2,
+    ) -> None:
+        super().__init__(config=config, transformer_layer_spec=transformer_layer_spec, spatial_merge_size=spatial_merge_size)
+        self.enable_siglip = enable_siglip
+        self.enable_dinov3 = enable_dinov3
+        self.siglip_model_path = siglip_model_path
+        self.dinov3_model_path = dinov3_model_path
+        self.freeze_external = freeze_external
+
+        self.siglip_model = None
+        self.dinov3_model = None
+
+        # Get encoder hidden sizes from config or read from model configs
+        siglip_hidden_size = self._get_encoder_hidden_size(
+            siglip_model_path, config.siglip_hidden_size, "SigLIP2"
+        )
+        dinov3_hidden_size = self._get_encoder_hidden_size(
+            dinov3_model_path, config.dinov3_hidden_size, "DINOv3"
+        )
+
+        # Use regular nn.Linear with known input dimensions instead of LazyLinear
+        self.siglip_proj = (
+            nn.Linear(siglip_hidden_size, config.hidden_size, bias=False)
+            if enable_siglip else None
+        )
+        self.dinov3_proj = (
+            nn.Linear(dinov3_hidden_size, config.hidden_size, bias=False)
+            if enable_dinov3 else None
+        )
+        # Start from zero so initial behavior matches pure Rice-ViT.
+        self.siglip_gate = nn.ParameterList([nn.Parameter(torch.tensor(0.0))]) if self.enable_siglip else None
+        self.dinov3_gate = nn.ParameterList([nn.Parameter(torch.tensor(0.0))]) if self.enable_dinov3 else None
+
+    def _get_encoder_hidden_size(
+        self, model_path: str, config_hidden_size: int, model_name: str
+    ) -> int:
+        """Get encoder hidden size: prefer config value, fallback to reading model config."""
+        # Use config-provided value if available (non-default)
+        if config_hidden_size > 0:
+            print_rank_0(
+                f"[HybridVisionModel] Using {model_name} hidden_size={config_hidden_size} from config"
+            )
+            return config_hidden_size
+
+        # Fallback: read from model config file
+        if AutoConfig is None:
+            print_rank_0(
+                f"[HybridVisionModel] transformers unavailable; using default {model_name} hidden_size"
+            )
+            return 1152 if "siglip" in model_name.lower() else 1024
+
+        try:
+            hf_config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+            # Try common hidden size attributes
+            hidden_size = getattr(hf_config, "hidden_size", None)
+            if hidden_size is None:
+                # For vision models, try vision_config.hidden_size
+                vision_config = getattr(hf_config, "vision_config", None)
+                if vision_config is not None:
+                    hidden_size = getattr(vision_config, "hidden_size", None)
+            if hidden_size is not None:
+                print_rank_0(
+                    f"[HybridVisionModel] Read {model_name} hidden_size={hidden_size} from {model_path}"
+                )
+                return hidden_size
+        except Exception as exc:
+            print_rank_0(
+                f"[HybridVisionModel] Failed to read {model_name} config from {model_path}: {exc}"
+            )
+
+        # Default fallback
+        default_size = 1152 if "siglip" in model_name.lower() else 1024
+        print_rank_0(
+            f"[HybridVisionModel] Using default {model_name} hidden_size={default_size}"
+        )
+        return default_size
+
+    def _is_dummy_pixels(self, pixel_values: Optional[torch.Tensor]) -> bool:
+        if pixel_values is None:
+            return True
+        if not isinstance(pixel_values, torch.Tensor):
+            return True
+        if pixel_values.numel() <= 1:
+            return True
+        if pixel_values.ndim != 4:
+            return True
+        return False
+
+    def _load_external_model(self, model_path: str, model_name: str):
+        """Load external encoder model."""
+        if AutoModel is None:
+            print_rank_0(
+                f"[HybridVisionModel] transformers AutoModel is unavailable; disabling {model_name}."
+            )
+            return None
+        try:
+            model = AutoModel.from_pretrained(model_path, trust_remote_code=True)
+            if self.freeze_external:
+                model.requires_grad_(False)
+                model.eval()
+            print_rank_0(f"[HybridVisionModel] loaded {model_name} from {model_path}")
+            return model
+        except Exception as exc:
+            print_rank_0(
+                f"[HybridVisionModel] failed to load {model_name} from {model_path}: {exc}"
+            )
+            return None
+
+    def load_external_models(self):
+        """Load external encoder models. Call this after model initialization."""
+        if self.enable_siglip and self.siglip_model is None:
+            self.siglip_model = self._load_external_model(self.siglip_model_path, "SigLIP2")
+        if self.enable_dinov3 and self.dinov3_model is None:
+            self.dinov3_model = self._load_external_model(self.dinov3_model_path, "DINOv3")
+
+    def _extract_sequence_features(self, model: nn.Module, pixel_values: torch.Tensor) -> torch.Tensor:
+        model = model.to(pixel_values.device)
+        ctx = torch.no_grad() if self.freeze_external else contextlib.nullcontext()
+        with ctx:
+            outputs = model(pixel_values=pixel_values)
+
+        if hasattr(outputs, "last_hidden_state") and outputs.last_hidden_state is not None:
+            features = outputs.last_hidden_state
+        elif hasattr(outputs, "pooler_output") and outputs.pooler_output is not None:
+            features = outputs.pooler_output.unsqueeze(1)
+        elif isinstance(outputs, (tuple, list)) and len(outputs) > 0:
+            features = outputs[0]
+        else:
+            raise RuntimeError("Cannot parse external vision model outputs.")
+
+        # For DINOv3: skip CLS token (1) and register tokens (4) to get pure patch features.
+        # Reference: preprocessor.py dinov3_fwd()
+        if hasattr(model.config, "num_register_tokens"):
+            num_skip = 1 + model.config.num_register_tokens  # CLS + registers
+            features = features[:, num_skip:, :]
+
+        if features.ndim == 2:
+            features = features.unsqueeze(1)
+        return features
+
+    def _interpolate_image_features(
+        self,
+        external_features: torch.Tensor,
+        grid_thw: torch.Tensor,
+        target_dtype: torch.dtype,
+        target_device: torch.device,
+    ) -> Optional[torch.Tensor]:
+        """
+        Interpolate external encoder features to match Rice-ViT token count.
+
+        Args:
+            external_features: [B, external_tokens, hidden_size] from external encoder
+            grid_thw: [B, 3] grid dimensions for each image
+            target_dtype: target data type
+            target_device: target device
+
+        Returns:
+            Interpolated features [total_target_tokens, hidden_size]
+        """
+        batch_size = external_features.size(0)
+        image_token_lengths = (grid_thw[:, 0] * grid_thw[:, 1] * grid_thw[:, 2]).tolist()
+        if len(image_token_lengths) != batch_size:
+            print_rank_0(
+                "[HybridVisionModel] external image count "
+                f"{batch_size} does not match grid_thw image count "
+                f"{len(image_token_lengths)}; skipping this branch."
+            )
+            return None
+
+        interpolated_list = []
+        for i in range(batch_size):
+            target_len = int(image_token_lengths[i])
+            # [1, external_tokens, hidden_size] -> interpolate -> [1, target_len, hidden_size]
+            feat = external_features[i:i + 1].permute(0, 2, 1)  # [1, hidden, external_tokens]
+            feat_interpolated = torch.nn.functional.interpolate(
+                feat,
+                size=target_len,
+                mode='linear',
+                align_corners=False
+            )  # [1, hidden, target_len]
+            feat_interpolated = feat_interpolated.permute(0, 2, 1).squeeze(0)  # [target_len, hidden]
+            interpolated_list.append(feat_interpolated)
+
+        result = torch.cat(interpolated_list, dim=0)  # [total_target_tokens, hidden]
+        return result.to(device=target_device, dtype=target_dtype)
+
+    def _fuse_external_branch(
+        self,
+        base_embeddings: torch.Tensor,
+        grid_thw: torch.Tensor,
+        pixel_values: Optional[torch.Tensor],
+        model: Optional[nn.Module],
+        projector: Optional[nn.Module],
+        gate: Optional[nn.Parameter],
+    ) -> torch.Tensor:
+        if self._is_dummy_pixels(pixel_values) or model is None or projector is None or gate is None:
+            return base_embeddings
+
+        seq_features = self._extract_sequence_features(model, pixel_values)
+        # Project features: [B, external_tokens, external_hidden] -> [B, external_tokens, target_hidden]
+        projected = projector(seq_features)
+        # Interpolate to match Rice-ViT token count
+        interpolated = self._interpolate_image_features(
+            projected,
+            grid_thw,
+            target_dtype=base_embeddings.dtype,
+            target_device=base_embeddings.device,
+        )
+        if interpolated is None:
+            return base_embeddings
+        return base_embeddings + torch.tanh(gate[0]) * interpolated
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        grid_thw: torch.Tensor,
+        pixel_values_images_siglip: Optional[torch.Tensor] = None,
+        pixel_values_images_dinov3: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        rice_embeddings, window_index = super().forward(x, grid_thw, **kwargs)
+        if pixel_values_images_dinov3 is None:
+            # Use SigLIP branch pixels as a fallback until a dedicated DINOv3 preprocessor stream is wired.
+            pixel_values_images_dinov3 = pixel_values_images_siglip
+
+        # Lazy load external models on first forward if not already loaded
+        self.load_external_models()
+
+        if self.enable_siglip:
+            rice_embeddings = self._fuse_external_branch(
+                base_embeddings=rice_embeddings,
+                grid_thw=grid_thw,
+                pixel_values=pixel_values_images_siglip,
+                model=self.siglip_model,
+                projector=self.siglip_proj,
+                gate=self.siglip_gate,
+            )
+
+        if self.enable_dinov3:
+            rice_embeddings = self._fuse_external_branch(
+                base_embeddings=rice_embeddings,
+                grid_thw=grid_thw,
+                pixel_values=pixel_values_images_dinov3,
+                model=self.dinov3_model,
+                projector=self.dinov3_proj,
+                gate=self.dinov3_gate,
+            )
+
+        return rice_embeddings, window_index

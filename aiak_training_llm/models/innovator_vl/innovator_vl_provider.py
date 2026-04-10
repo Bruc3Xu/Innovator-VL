@@ -114,6 +114,7 @@ def rice_vl_model_provider(
         language_rotary_percent=args.rotary_percent,
         language_rotary_base=args.rotary_base,
         seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor,
+        use_hybrid_vision_model=getattr(args, "use_hybrid_vision_model", False)
     )
 
     if args.trainable_modules != ['all']:

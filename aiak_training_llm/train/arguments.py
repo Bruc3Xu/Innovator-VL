@@ -415,6 +415,9 @@ def _add_extra_multimodal_args(parser):
 
     group.add_argument('--fps-max-frames', type=int, default=768,
                        help='The maximum number of frames of the video')
+
+    group.add_argument('--use-hybrid-vision-model', action='store_true',
+                       help='Use HybridVisionModel (Rice-ViT + SigLIP2 + DINOv3) in Innovator-VL.')
     return parser
 
 

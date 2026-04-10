@@ -57,6 +57,51 @@ class RiceConfig(PretrainedConfig):
         self.text_hidden_size = text_hidden_size
 
 
+class HybridVitConfig(RiceConfig):
+    model_type = "hybrid_vit"
+    base_config_key = "vision_config"
+
+    def __init__(
+        self,
+        depth=24,
+        embed_dim=1024,
+        hidden_size=1024,
+        hidden_act="gelu",
+        intermediate_size=4096,
+        num_heads=16,
+        in_channels=3,
+        patch_size=14,
+        spatial_merge_size=2,
+        temporal_patch_size=1,
+        initializer_range=0.02,
+        layer_norm_eps=1e-05,
+        text_hidden_size=2560,
+        enable_siglip=None,
+        enable_dinov3=None,
+        freeze_external=True,
+        **kwargs,
+    ):
+        super().__init__(
+            depth=depth,
+            embed_dim=embed_dim,
+            hidden_size=hidden_size,
+            hidden_act=hidden_act,
+            intermediate_size=intermediate_size,
+            num_heads=num_heads,
+            in_channels=in_channels,
+            patch_size=patch_size,
+            spatial_merge_size=spatial_merge_size,
+            temporal_patch_size=temporal_patch_size,
+            initializer_range=initializer_range,
+            layer_norm_eps=layer_norm_eps,
+            text_hidden_size=text_hidden_size,
+            **kwargs,
+        )
+        self.enable_siglip = enable_siglip
+        self.enable_dinov3 = enable_dinov3
+        self.freeze_external = freeze_external
+
+
 class InnovatorVl_TextConfig(PretrainedConfig):
     r"""
     Args:
@@ -256,7 +301,7 @@ class InnovatorVlConfig(PretrainedConfig):
     """
 
     model_type = "innovator_vl"
-    sub_configs = {"vision_config": RiceConfig, "text_config": InnovatorVl_TextConfig}
+    sub_configs = {"vision_config": HybridVitConfig, "text_config": InnovatorVl_TextConfig}
     keys_to_ignore_at_inference = ["past_key_values"]
 
     def __init__(
