@@ -279,9 +279,11 @@ class InnovatorVl(MegatronModule):
             and self.vision_model is not None
             and isinstance(self.vision_model, HybridVisionModel)
         ):
+            from megatron.training import print_rank_0
             for name, param in self.vision_model.named_parameters():
                 if any(key in name for key in ["siglip_proj", "dinov3_proj", "siglip_gate", "dinov3_gate"]):
                     param.requires_grad = True
+                    print_rank_0(f"{key} unfreeze")
 
     def forward(
         self,
