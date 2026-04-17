@@ -37,7 +37,7 @@ def create_test_image():
 
 def load_empty_model(llm_path):
     print("Loading tokenizer and processor from Qwen2.5-VL and empty model...")
-    qwen_vl_path = "/mnt/innovator/model/yangboxue/Qwen2.5-VL-7B-Instruct"
+    qwen_vl_path = "/mnt/si00068187c7/default/innovator_vl/models/Qwen2.5-VL-7B-Instruct"
     tokenizer = Qwen2Tokenizer.from_pretrained(qwen_vl_path, trust_remote_code=True, device_map={"": f"cuda:{CUDA_DEVICE}"})
     processor = AutoProcessor.from_pretrained(qwen_vl_path)
     processor.image_processor.temporal_patch_size = 1

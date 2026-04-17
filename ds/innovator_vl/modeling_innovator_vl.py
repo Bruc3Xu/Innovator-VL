@@ -42,7 +42,11 @@ from transformers.integrations import use_kernel_forward_from_hub
 from transformers.processing_utils import Unpack
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers import AutoModelForCausalLM, AutoConfig
+from transformers.models.dinov3_vit.modeling_dinov3_vit import DINOv3ViTLayerScale
 from innovator_vl.configuration_innovator_vl import InnovatorVlConfig, InnovatorVl_TextConfig, RiceConfig, HybridVitConfig
+from transformers import AutoModel, Siglip2VisionModel
+from innovator_vl.hybrid_adapter import HybridAdapter
+from innovator_vl.custom_attention import replace_siglip2_attention_layers, replace_dinov3_attention_layers
 
 
 if is_flash_attn_available():
@@ -1086,250 +1090,115 @@ class RiceTransformerPretrainedModel(Qwen2VLPreTrainedModel):
         return self.merger(hidden_states)
 
 
-class HybridVitPretrainedModel(RiceTransformerPretrainedModel):
+def replace_by_type(module: nn.Module, target_type, factory=lambda _: nn.Identity()):
+    for name, child in list(module.named_children()):
+        if isinstance(child, target_type):
+            setattr(module, name, factory(child))  # 替换为新模块
+        else:
+            replace_by_type(child, target_type, factory)
+
+
+class HybridVitPretrainedModel(Qwen2VLPreTrainedModel):
     config_class = HybridVitConfig
     _no_split_modules = ["RiceBlock"]
 
     def __init__(self, config) -> None:
         super().__init__(config=config)
-        self.enable_siglip = config.enable_siglip
-        self.enable_dinov3 = config.enable_dinov3
-        self.siglip_proj = (
-            nn.Linear(config.siglip_hidden_size, config.hidden_size, bias=False)
-            if config.enable_siglip else None
-        )
-        self.dinov3_proj = (
-            nn.Linear(config.dinov3_hidden_size, config.hidden_size, bias=False)
-            if config.enable_dinov3 else None
-        )
-        # Start from zero so initial behavior matches pure Rice-ViT.
-        self.siglip_gate = nn.ParameterList([nn.Parameter(torch.tensor(0.0))]) if config.enable_siglip else None
-        self.dinov3_gate = nn.ParameterList([nn.Parameter(torch.tensor(0.0))]) if config.enable_dinov3 else None
+        self.rice_vit = RiceTransformerPretrainedModel(config)
 
-   def _is_dummy_pixels(self, pixel_values: Optional[torch.Tensor]) -> bool:
-        if pixel_values is None:
-            return True
-        if not isinstance(pixel_values, torch.Tensor):
-            return True
-        if pixel_values.numel() <= 1:
-            return True
-        if pixel_values.ndim != 4:
-            return True
-        return False
+        self.siglip_model = Siglip2VisionModel.from_pretrained("models/siglip2-so400m-patch14-384").vision_model
+        self.siglip_model = replace_siglip2_attention_layers(self.siglip_model)
+        self.siglip_model.post_layernorm = nn.Identity()
+        self.siglip_model.head = nn.Identity()
 
-    def _load_external_model(self, model_path: str, model_name: str):
-        """Load external encoder model."""
-        if AutoModel is None:
-            return None
-        try:
-            model = AutoModel.from_pretrained(model_path, trust_remote_code=True)
-            if self.freeze_external:
-                model.requires_grad_(False)
-                model.eval()
-            return model
-        except Exception as exc:
-            return None
+        self.dinov3_model = AutoModel.from_pretrained("models/dinov3-vitl16-pretrain-lvd1689m")
+        self.dinov3_model = replace_dinov3_attention_layers(self.dinov3_model)
+        self.dinov3_model.norm = nn.Identity()
+        replace_by_type(self.dinov3_model, DINOv3ViTLayerScale)
 
-    def load_external_models(self):
-        """Load external encoder models. Call this after model initialization."""
-        if self.enable_siglip and self.siglip_model is None:
-            self.siglip_model = self._load_external_model(self.siglip_model_path, "SigLIP2")
-        if self.enable_dinov3 and self.dinov3_model is None:
-            self.dinov3_model = self._load_external_model(self.dinov3_model_path, "DINOv3")
+        self.merger = HybridAdapter(config.hidden_size,
+                                    self.siglip_model.config.hidden_size,
+                                    self.dinov3_model.config.hidden_size,
+                                    config.text_hidden_size
+                                    )
 
-    def _extract_sequence_features(self, model: nn.Module, pixel_values: torch.Tensor) -> torch.Tensor:
-        model = model.to(pixel_values.device)
-        ctx = torch.no_grad() if self.freeze_external else contextlib.nullcontext()
-        with ctx:
-            outputs = model(pixel_values=pixel_values)
-
-        if hasattr(outputs, "last_hidden_state") and outputs.last_hidden_state is not None:
-            features = outputs.last_hidden_state
-        elif hasattr(outputs, "pooler_output") and outputs.pooler_output is not None:
-            features = outputs.pooler_output.unsqueeze(1)
-        elif isinstance(outputs, (tuple, list)) and len(outputs) > 0:
-            features = outputs[0]
-        else:
-            raise RuntimeError("Cannot parse external vision model outputs.")
+    def _extract_sequence_features(
+        self,
+        model: nn.Module,
+        pixel_values: torch.Tensor,
+        target_dtype: torch.dtype,
+        target_device: torch.device,
+    ) -> torch.Tensor:
+        """Extract sequence features from an encoder model."""
+        model = model.to(target_device)
+        features = model(pixel_values)
 
         # For DINOv3: skip CLS token (1) and register tokens (4) to get pure patch features.
         # Reference: preprocessor.py dinov3_fwd()
-        if hasattr(model.config, "num_register_tokens"):
+        if hasattr(model, "config") and hasattr(model.config, "num_register_tokens"):
             num_skip = 1 + model.config.num_register_tokens  # CLS + registers
             features = features[:, num_skip:, :]
 
         if features.ndim == 2:
             features = features.unsqueeze(1)
-        return features
 
-    def _interpolate_image_features(
+        return features.to(target_dtype)
+
+    def forward(
         self,
-        external_features: torch.Tensor,
+        x: torch.Tensor,
         grid_thw: torch.Tensor,
-        target_dtype: torch.dtype,
-        target_device: torch.device,
-    ) -> Optional[torch.Tensor]:
+        pixel_values_images_siglip: Optional[torch.Tensor] = None,
+        pixel_values_images_dinov3: Optional[torch.Tensor] = None,
+        is_verifying=False,
+        **kwargs,
+    ) -> Tuple[
+        torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]
+    ]:
         """
-        Interpolate external encoder features to match Rice-ViT token count.
+        Forward pass that returns features from all three encoders.
 
         Args:
-            external_features: [B, external_tokens, hidden_size] from external encoder
-            grid_thw: [B, 3] grid dimensions for each image
-            target_dtype: target data type
-            target_device: target device
+            x: Input tensor for RiceViT [batch, channels, height, width]
+            grid_thw: Grid dimensions [num_images, 3]
+            pixel_values_images_siglip: Optional SigLIP2 input images
+            pixel_values_images_dinov3: Optional DINOv3 input images
 
         Returns:
-            Interpolated features [total_target_tokens, hidden_size]
+            Tuple of:
+                - ricevit_features: [total_tokens, hidden_size]
+                - window_index: Window index for reordering
+                - siglip_features: [batch, num_tokens, hidden_size] or None
+                - dinov3_features: [batch, num_tokens, hidden_size] or None
         """
-        batch_size = external_features.size(0)
-        image_token_lengths = (grid_thw[:, 0] * grid_thw[:, 1] * grid_thw[:, 2]).tolist()
-        if len(image_token_lengths) != batch_size:
-            return None
+        # Get RiceViT features (base encoder)
+        ricevit_features, window_index = self.rice_vit(x, grid_thw, is_verifying=True, **kwargs)
 
-        interpolated_list = []
-        for i in range(batch_size):
-            target_len = int(image_token_lengths[i])
-            # [1, external_tokens, hidden_size] -> interpolate -> [1, target_len, hidden_size]
-            feat = external_features[i:i + 1].permute(0, 2, 1)  # [1, hidden, external_tokens]
-            feat_interpolated = torch.nn.functional.interpolate(
-                feat,
-                size=target_len,
-                mode='linear',
-                align_corners=False
-            )  # [1, hidden, target_len]
-            feat_interpolated = feat_interpolated.permute(0, 2, 1).squeeze(0)  # [target_len, hidden]
-            interpolated_list.append(feat_interpolated)
+        # Get SigLIP2 features if provided
+        siglip_features = None
+        if pixel_values_images_siglip is not None:
+            siglip_features = self._extract_sequence_features(
+                self.siglip_model,
+                pixel_values_images_siglip,
+                target_dtype=ricevit_features.dtype,
+                target_device=ricevit_features.device,
+            )
 
-        result = torch.cat(interpolated_list, dim=0)  # [total_target_tokens, hidden]
-        return result.to(device=target_device, dtype=target_dtype)
-
-    def _fuse_external_branch(
-        self,
-        base_embeddings: torch.Tensor,
-        grid_thw: torch.Tensor,
-        pixel_values: Optional[torch.Tensor],
-        model: Optional[nn.Module],
-        projector: Optional[nn.Module],
-        gate: Optional[nn.Parameter],
-    ) -> torch.Tensor:
-        if self._is_dummy_pixels(pixel_values) or model is None or projector is None or gate is None:
-            return base_embeddings
-
-        seq_features = self._extract_sequence_features(model, pixel_values)
-        # Project features: [B, external_tokens, external_hidden] -> [B, external_tokens, target_hidden]
-        projected = projector(seq_features)
-        # Interpolate to match Rice-ViT token count
-        interpolated = self._interpolate_image_features(
-            projected,
-            grid_thw,
-            target_dtype=base_embeddings.dtype,
-            target_device=base_embeddings.device,
-        )
-        if interpolated is None:
-            return base_embeddings
-        return base_embeddings + torch.tanh(gate[0]) * interpolated
-
-
-    @auto_docstring
-    def forward(self, hidden_states: torch.Tensor, grid_thw: torch.Tensor, is_verifying: bool=False, pixel_values_images_siglip: Optional[torch.Tensor] = None,
-        pixel_values_images_dinov3: Optional[torch.Tensor] = None,
-        **kwargs,) -> torch.Tensor:
-        r"""
-        grid_thw (`torch.LongTensor` of shape `(num_images, 3)`):
-            The temporal, height and width dimensions of feature shape for each image. Each row contains [t, h, w] values.
-        """
-        hidden_states = self.patch_embed(hidden_states)
-        rotary_pos_emb = self.rot_pos_emb(grid_thw)
-        img_feats = hidden_states.shape[0]
+        # Get DINOv3 features if provided
+        dinov3_features = None
+        if pixel_values_images_dinov3 is not None:
+            dinov3_features = self._extract_sequence_features(
+                self.dinov3_model,
+                pixel_values_images_dinov3,
+                target_dtype=ricevit_features.dtype,
+                target_device=ricevit_features.device,
+            )
         
-        cu_seqlens = torch.repeat_interleave(grid_thw[:, 1] * grid_thw[:, 2], grid_thw[:, 0]).cumsum(
-            dim=0,
-            # Select dtype based on the following factors:
-            #  - FA2 requires that cu_seqlens_q must have dtype int32
-            #  - torch.onnx.export requires that cu_seqlens_q must have same dtype as grid_thw
-            # See https://github.com/huggingface/transformers/pull/34852 for more information
-            dtype=grid_thw.dtype if torch.jit.is_tracing() else torch.int32,
-        )
-        cu_seqlens = F.pad(cu_seqlens, (1, 0), value=0)
-        cu = cu_seqlens.to(torch.long)
-        num_segments = cu.numel() - 1
-        cls_token = self.class_embedding.to(hidden_states.dtype).unsqueeze(0)
-
-        total_patches = cu[-1].item()
-        new_total = total_patches + num_segments
-        D = hidden_states.size(-1)
-        new_hidden = hidden_states.new_empty((new_total, D))
-        new_rotary_pos_emb = rotary_pos_emb.new_empty((new_total, rotary_pos_emb.shape[-1]))
-
-        write_ptr = 0
-        new_cu = [0]
-        for i in range(1, num_segments + 1):
-            seg_start = cu[i-1].item()
-            seg_end = cu[i].item()
-            seg_len = seg_end - seg_start
-            new_hidden[write_ptr] = cls_token
-            new_rotary_pos_emb[write_ptr] = self.class_pos_emb
-            new_hidden[write_ptr + 1: write_ptr + 1 + seg_len] = hidden_states[seg_start:seg_end]
-            new_rotary_pos_emb[write_ptr + 1: write_ptr + 1 + seg_len] = rotary_pos_emb[seg_start:seg_end]
-            write_ptr += 1 + seg_len
-            new_cu.append(write_ptr)
-
-        hidden_states = new_hidden
-        cu_seqlens = torch.tensor(new_cu, device=hidden_states.device, dtype=torch.int32) 
-        rotary_pos_emb = new_rotary_pos_emb
-
-        hidden_states = self.pre_layernorm(hidden_states)
-
-        emb = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=-1)
-        position_embeddings = (emb.cos(), emb.sin())
-
-        for blk in self.blocks:
-            if self.gradient_checkpointing and self.training:
-                hidden_states = self._gradient_checkpointing_func(
-                    blk.__call__, hidden_states, cu_seqlens, None, position_embeddings
-                )
-            else:
-                hidden_states = blk(hidden_states, cu_seqlens=cu_seqlens, position_embeddings=position_embeddings)
-        
-        new_hidden = hidden_states.new_empty((img_feats, D))
-
-        for i in range(1, num_segments + 1):
-            seg_start = cu[i-1].item()
-            seg_end = cu[i].item()
-            new_hidden[seg_start:seg_end] = hidden_states[seg_start+1:seg_end+1]
-        hidden_states = new_hidden
         if is_verifying:
-            return hidden_states
+            return ricevit_features, siglip_features, dinov3_features
 
+        return self.merger(ricevit_features, window_index, siglip_features, dinov3_features)
 
-        if pixel_values_images_dinov3 is None:
-            # Use SigLIP branch pixels as a fallback until a dedicated DINOv3 preprocessor stream is wired.
-            pixel_values_images_dinov3 = pixel_values_images_siglip
-
-        # Lazy load external models on first forward if not already loaded
-        self.load_external_models()
-
-        if self.enable_siglip:
-            hidden_states = self._fuse_external_branch(
-                base_embeddings=hidden_states,
-                grid_thw=grid_thw,
-                pixel_values=pixel_values_images_siglip,
-                model=self.siglip_model,
-                projector=self.siglip_proj,
-                gate=self.siglip_gate,
-            )
-
-        if self.enable_dinov3:
-            hidden_states = self._fuse_external_branch(
-                base_embeddings=hidden_states,
-                grid_thw=grid_thw,
-                pixel_values=pixel_values_images_dinov3,
-                model=self.dinov3_model,
-                projector=self.dinov3_proj,
-                gate=self.dinov3_gate,
-            )
-
-        return self.merger(hidden_states)
 
 @auto_docstring
 class InnovatorVl_TextModel(Qwen2VLPreTrainedModel):

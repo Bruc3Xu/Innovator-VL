@@ -76,8 +76,6 @@ class HybridVitConfig(RiceConfig):
         initializer_range=0.02,
         layer_norm_eps=1e-05,
         text_hidden_size=2560,
-        enable_siglip=None,
-        enable_dinov3=None,
         freeze_external=True,
         **kwargs,
     ):
@@ -97,8 +95,6 @@ class HybridVitConfig(RiceConfig):
             text_hidden_size=text_hidden_size,
             **kwargs,
         )
-        self.enable_siglip = enable_siglip
-        self.enable_dinov3 = enable_dinov3
         self.freeze_external = freeze_external
 
 

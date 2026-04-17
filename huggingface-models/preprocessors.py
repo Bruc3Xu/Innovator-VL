@@ -9,7 +9,8 @@ image = load_image(url)
 def dinov3_fwd():
     pretrained_model_name = "models/dinov3-vitl16-pretrain-lvd1689m"
     processor = AutoImageProcessor.from_pretrained(pretrained_model_name)
-    model = AutoModel.from_pretrained(pretrained_model_name)
+    model = AutoModel.from_pretrained(pretrained_model_name).to("cuda:0")
+    print(model)
     patch_size = model.config.patch_size
     print("Patch size:", patch_size) # 16
     print("Num register tokens:", model.config.num_register_tokens) # 4
@@ -37,6 +38,7 @@ def dinov3_fwd():
 
 def siglip_fwd():
     model = SiglipVisionModel.from_pretrained("models/siglip2-so400m-patch14-384")
+    print(model)
     processor = AutoProcessor.from_pretrained("models/siglip2-so400m-patch14-384")
     inputs = processor(images=image, return_tensors="pt")
     outputs = model(**inputs)
@@ -45,5 +47,5 @@ def siglip_fwd():
     return last_hidden_state
 
 
-dinov3_fwd()
-# siglip_fwd()
+# dinov3_fwd()
+siglip_fwd()

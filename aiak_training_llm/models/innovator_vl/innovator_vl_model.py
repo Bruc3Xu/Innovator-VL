@@ -5,10 +5,6 @@ from typing import List, Optional
 
 import torch
 from megatron.core import InferenceParams, parallel_state
-from megatron.core.models.common.embeddings.rope_utils import \
-    get_pos_emb_on_this_cp_rank
-from megatron.core.models.common.embeddings.rotary_pos_embedding import \
-    RotaryEmbedding
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.enums import AttnMaskType
@@ -20,6 +16,7 @@ from aiak_training_llm.models.innovator_vl.vision_model import RiceViTModel
 from aiak_training_llm.models.innovator_vl.hybrid_vision_model import HybridVisionModel
 from aiak_training_llm.models.qwen import QwenModel
 from aiak_training_llm.models.qwen_vl.adapter import Adapter
+from aiak_training_llm.models.innovator_vl.adapter import HybridAdapter
 from aiak_training_llm.models.qwen_vl.utils import get_inputs_on_this_cp_rank
 
 
@@ -176,12 +173,26 @@ class InnovatorVl(MegatronModule):
             # from megatron.training import print_rank_0
             # print_rank_0(f"vision_config.hidden_size: {vision_config.hidden_size}")
             # print_rank_0(f"language_config.hidden_size: {language_config.hidden_size}")
-            self.adapter = Adapter(
-                adapter_config,
-                adapter_layer_spec,
-                input_size=vision_config.hidden_size,  # input size to the adapter.
-                output_size=language_config.hidden_size,  # output size of the adapter.
-            )
+
+            # Use HybridAdapter for hybrid vision model, regular Adapter otherwise
+            if use_hybrid_vision_model:
+                self.adapter = HybridAdapter(
+                    config=adapter_config,
+                    submodules=adapter_layer_spec,
+                    ricevit_input_size=vision_config.hidden_size,
+                    siglip_input_size=1152,
+                    dinov3_input_size=1024,
+                    output_size=language_config.hidden_size,
+                    spatial_merge_size=getattr(vision_config, 'spatial_merge_size', 2),
+                    fusion_type=getattr(adapter_config, 'fusion_type', 'gated_sum'),
+                )
+            else:
+                self.adapter = Adapter(
+                    adapter_config,
+                    adapter_layer_spec,
+                    input_size=vision_config.hidden_size,  # input size to the adapter.
+                    output_size=language_config.hidden_size,  # output size of the adapter.
+                )
             # This allows ignoring missing weights for the vision projection during checkpoint loading.
             # This should be disabled by default but can be enabled if your checkpoint contains pretrained
             # vision and language models but not the projection from vision model outputs to language model inputs.
@@ -270,21 +281,6 @@ class InnovatorVl(MegatronModule):
             for param in module.parameters():
                 param.requires_grad = False
 
-        # If using hybrid vision model with frozen vision but unfrozen adapter,
-        # unfreeze the external encoder projectors and gates to allow training
-        # the fusion mechanism while keeping base encoders frozen.
-        if (
-            freeze_vision_model
-            and not freeze_adapter
-            and self.vision_model is not None
-            and isinstance(self.vision_model, HybridVisionModel)
-        ):
-            from megatron.training import print_rank_0
-            for name, param in self.vision_model.named_parameters():
-                if any(key in name for key in ["siglip_proj", "dinov3_proj", "siglip_gate", "dinov3_gate"]):
-                    param.requires_grad = True
-                    print_rank_0(f"{key} unfreeze")
-
     def forward(
         self,
         images: torch.Tensor,
@@ -340,13 +336,30 @@ class InnovatorVl(MegatronModule):
             image_embeddings = None
         elif self.add_encoder:
             if images is not None:
-                image_embeddings, window_index = self.vision_model(
+                # Check if using hybrid vision model (returns 4 values) or regular (returns 2 values)
+                vision_output = self.vision_model(
                     images,
                     grid_thw=image_grid_thw,
                     pixel_values_images_siglip=pixel_values_images_siglip,
                     pixel_values_images_dinov3=pixel_values_images_dinov3,
-                )  # [img_len, h_vision]
-                image_embeddings = self.adapter(image_embeddings, window_index)
+                )
+
+                if len(vision_output) == 4:
+                    # HybridVisionModel returns: ricevit_features, window_index, siglip_features, dinov3_features
+                    ricevit_features, window_index, siglip_features, dinov3_features = vision_output
+                    # Use HybridAdapter to fuse features
+                    image_embeddings = self.adapter(
+                        ricevit_features,
+                        siglip_features=siglip_features,
+                        dinov3_features=dinov3_features,
+                        window_index=window_index,
+                    )
+                else:
+                    # Regular RiceViT model returns: embeddings, window_index
+                    image_embeddings, window_index = vision_output
+                    # Use regular Adapter
+                    image_embeddings = self.adapter(image_embeddings, window_index)
+
                 n_image_tokens = (input_ids == self.config.image_token_id).sum().item()
                 n_image_features = image_embeddings.shape[0]
                 if n_image_tokens != n_image_features:

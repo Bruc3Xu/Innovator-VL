@@ -184,13 +184,7 @@ class VisionConfig:
     add_bias_linear: bool = False
     add_qkv_bias: bool = False
     position_embedding_type: str = "none"
-    # Multi-encoder config for HybridVisionModel
-    enable_siglip: bool = False
-    enable_dinov3: bool = False
-    siglip_model_path: str = "models/siglip2-so400m-patch14-384"
-    dinov3_model_path: str = "models/dinov3-vitl16-pretrain-lvd1689m"
-    siglip_hidden_size: int = 1152
-    dinov3_hidden_size: int = 1024
+    spatial_merge_size: int = 2
     freeze_external: bool = True
 
 
@@ -219,12 +213,6 @@ def get_vision_config(model_family, model_name):
         add_bias_linear=True,
         add_qkv_bias=True,
         position_embedding_type="rope",
-        enable_siglip=False,
-        enable_dinov3=False,
-        siglip_model_path="models/siglip2-so400m-patch14-384",
-        dinov3_model_path="models/dinov3-vitl16-pretrain-lvd1689m",
-        siglip_hidden_size=1152,
-        dinov3_hidden_size=1024,
         freeze_external=True
     )
     if "vision-2b" in model_name:

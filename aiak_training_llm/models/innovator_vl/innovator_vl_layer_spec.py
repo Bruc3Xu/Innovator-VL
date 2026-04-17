@@ -16,8 +16,29 @@ from megatron.core.transformer.transformer_layer import (
     TransformerLayer, TransformerLayerSubmodules)
 
 from aiak_training_llm.models.dispatch import multiacc_modules
+from aiak_training_llm.models.innovator_vl.adapter import HybridAdapterSubmodules
+from aiak_training_llm.models.qwen_vl.vision_model import apply_rotary_pos_emb_vision
 
-from .vision_model import apply_rotary_pos_emb_vision
+
+def get_hybrid_adapter_layer_with_spec() -> HybridAdapterSubmodules:
+    """Use this spec for HybridAdapter with 3 encoders (RiceViT, SigLIP2, DINOv3)."""
+    return HybridAdapterSubmodules(
+        # RiceViT adapter submodules
+        ricevit_layernorm=multiacc_modules.LocalNorm,
+        ricevit_fc1=multiacc_modules.TELinear,
+        ricevit_fc2=multiacc_modules.TELinear,
+        # SigLIP2 adapter submodules
+        siglip_layernorm=multiacc_modules.LocalNorm,
+        siglip_fc1=multiacc_modules.TELinear,
+        siglip_fc2=multiacc_modules.TELinear,
+        # DINOv3 adapter submodules
+        dinov3_layernorm=multiacc_modules.LocalNorm,
+        dinov3_fc1=multiacc_modules.TELinear,
+        dinov3_fc2=multiacc_modules.TELinear,
+        # Fusion projection submodules
+        fusion_layernorm=multiacc_modules.LocalNorm,
+        fusion_fc=multiacc_modules.TELinear,
+    )
 
 
 def get_vision_layer_with_spec() -> ModuleSpec:

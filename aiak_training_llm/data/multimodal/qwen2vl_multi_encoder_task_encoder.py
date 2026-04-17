@@ -20,7 +20,9 @@ class Qwen2VLMultiEncoderTaskEncoder(Qwen2VLTaskEncoder):
 
     def __init__(self, args):
         super().__init__(args)
-        self.siglip_processor = AutoProcessor.from_pretrained("models/siglip2-so400m-patch14-384")
+        model_path = "/mnt/si00068187c7/default/innovator_vl/models/"
+        self.siglip_processor = AutoProcessor.from_pretrained(model_path + "siglip2-so400m-patch14-384", use_fast=True)
+        self.dinov3_processor = AutoProcessor.from_pretrained(model_path + "dinov3-vitl16-pretrain-lvd1689m", use_fast=True, size=(448, 448))
 
     def _to_image_list(self, images):
         if images is None:
@@ -36,63 +38,16 @@ class Qwen2VLMultiEncoderTaskEncoder(Qwen2VLTaskEncoder):
         pixel_values = self.siglip_processor(images=image_list, return_tensors="pt")["pixel_values"]
         return [pixel_values]
 
-    def _infer_qwen_patch_layout(self, patch_dim: int):
-        channels = 3
-        for temporal_patch in (2, 1, 4, 8):
-            denom = channels * temporal_patch
-            if patch_dim % denom != 0:
-                continue
-            patch_area = patch_dim // denom
-            patch_size = int(math.isqrt(patch_area))
-            if patch_size * patch_size == patch_area:
-                return temporal_patch, patch_size
-        raise ValueError(f"Cannot infer qwen patch layout from patch_dim={patch_dim}.")
-
-    def _process_dinov3_images_from_qwen(self, qwen_pixel_values, image_grid_thw):
-        if qwen_pixel_values is None or image_grid_thw is None:
+    def _process_dinov3_images(self, images):
+        image_list = self._to_image_list(images)
+        if len(image_list) == 0:
             return []
-        if not isinstance(qwen_pixel_values, torch.Tensor):
-            return []
-        if qwen_pixel_values.ndim != 2 or qwen_pixel_values.numel() == 0:
-            return []
-
-        if isinstance(image_grid_thw, list):
-            image_grid_thw = torch.tensor(image_grid_thw, dtype=torch.int32)
-        if image_grid_thw.ndim == 1:
-            image_grid_thw = image_grid_thw.unsqueeze(0)
-
-        temporal_patch_size, patch_size = self._infer_qwen_patch_layout(qwen_pixel_values.shape[-1])
-
-        image_tensors = []
-        offset = 0
-        for t_tensor, h_tensor, w_tensor in image_grid_thw:
-            t = int(t_tensor.item())
-            h = int(h_tensor.item())
-            w = int(w_tensor.item())
-            num_tokens = t * h * w
-            if offset + num_tokens > qwen_pixel_values.shape[0]:
-                break
-
-            patches = qwen_pixel_values[offset:offset + num_tokens]
-            offset += num_tokens
-
-            patches = patches.reshape(t, h, w, temporal_patch_size, 3, patch_size, patch_size)
-            patches = patches.permute(0, 3, 4, 1, 5, 2, 6).contiguous()
-            frames = patches.reshape(t * temporal_patch_size, 3, h * patch_size, w * patch_size)
-            image_tensors.append(frames.mean(dim=0))
-
-        if len(image_tensors) == 0:
-            return []
-
-        pixel_values = torch.stack(image_tensors, dim=0).float()
-        return [pixel_values]
+        pixel_values = self.dinov3_processor(images=image_list, return_tensors="pt")["pixel_values"]
 
     def _process_with_aux_pixels(self, image, text):
         input_ids, target, pixel_values, image_grid_thw, attn_mask = self._process(image, text)
-        qwen_resized_image = self._resize_image(image) if image is not None else None
-        siglip_pixel_values = self._process_siglip_images(qwen_resized_image)
-        qwen_pixel_values = pixel_values[0] if len(pixel_values) > 0 else None
-        dinov3_pixel_values = self._process_dinov3_images_from_qwen(qwen_pixel_values, image_grid_thw)
+        siglip_pixel_values = self._process_siglip_images(image)
+        dinov3_pixel_values = self._process_dinov3_images(image)
         return (
             input_ids,
             target,

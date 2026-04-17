@@ -5,7 +5,7 @@ from dataclasses import asdict
 
 from aiak_training_llm.models.factory import register_model_provider
 from aiak_training_llm.models.innovator_vl.innovator_vl_layer_spec import (
-    get_qwen_layer_with_te_spec, get_vision_layer_with_spec)
+    get_qwen_layer_with_te_spec, get_vision_layer_with_spec, get_hybrid_adapter_layer_with_spec)
 from aiak_training_llm.models.qwen_vl.qwen2_vl_layer_spec import \
     get_adapeter_layer_with_spec
 from aiak_training_llm.models.innovator_vl.innovator_vl_config import (
@@ -90,7 +90,12 @@ def rice_vl_model_provider(
     if args.spec is not None:
         language_layer_spec = import_module(args.spec)
     else:
-        adapter_layer_spec = get_adapeter_layer_with_spec()
+        # Choose adapter spec based on whether using hybrid vision model
+        use_hybrid = getattr(args, "use_hybrid_vision_model", False)
+        if use_hybrid:
+            adapter_layer_spec = get_hybrid_adapter_layer_with_spec()
+        else:
+            adapter_layer_spec = get_adapeter_layer_with_spec()
         vision_layer_spec = get_vision_layer_with_spec()
         language_layer_spec = get_qwen_layer_with_te_spec(language_config)
 
