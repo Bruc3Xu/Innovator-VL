@@ -32,7 +32,7 @@
     "name_map": {
         "huggingface": {
             "transformer": "visual",
-            "layer_prefix": "blocks",
+            "layer_prefix": "rice_vit.blocks",
             "input_layernorm": "norm1",
             "attention.query_key_value": "attn.qkv",
             "attention.dense": "attn.proj",
@@ -43,7 +43,7 @@
         },
         "mcore": {
             "transformer": "model",
-            "layer_prefix": "vision_model.decoder.layers",
+            "layer_prefix": "vision_model.rice_vit.decoder.layers",
             "input_layernorm": "self_attention.linear_qkv.layer_norm",
             "attention.query_key_value": "self_attention.linear_qkv",
             "attention.dense": "self_attention.linear_proj",

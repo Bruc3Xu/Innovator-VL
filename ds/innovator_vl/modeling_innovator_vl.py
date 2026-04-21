@@ -44,7 +44,7 @@ from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers import AutoModelForCausalLM, AutoConfig
 from transformers.models.dinov3_vit.modeling_dinov3_vit import DINOv3ViTLayerScale
 from innovator_vl.configuration_innovator_vl import InnovatorVlConfig, InnovatorVl_TextConfig, RiceConfig, HybridVitConfig
-from transformers import AutoModel, Siglip2VisionModel
+from transformers import AutoModel, SiglipVisionModel
 from innovator_vl.hybrid_adapter import HybridAdapter
 from innovator_vl.custom_attention import replace_siglip2_attention_layers, replace_dinov3_attention_layers
 
@@ -1106,7 +1106,7 @@ class HybridVitPretrainedModel(Qwen2VLPreTrainedModel):
         super().__init__(config=config)
         self.rice_vit = RiceTransformerPretrainedModel(config)
 
-        self.siglip_model = Siglip2VisionModel.from_pretrained("models/siglip2-so400m-patch14-384").vision_model
+        self.siglip_model = SiglipVisionModel.from_pretrained("models/siglip2-so400m-patch14-384").vision_model
         self.siglip_model = replace_siglip2_attention_layers(self.siglip_model)
         self.siglip_model.post_layernorm = nn.Identity()
         self.siglip_model.head = nn.Identity()

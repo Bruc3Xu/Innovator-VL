@@ -20,7 +20,7 @@ class Qwen2VLMultiEncoderTaskEncoder(Qwen2VLTaskEncoder):
 
     def __init__(self, args):
         super().__init__(args)
-        model_path = "/mnt/si00068187c7/default/innovator_vl/models/"
+        model_path = "/workspace/models/"
         self.siglip_processor = AutoProcessor.from_pretrained(model_path + "siglip2-so400m-patch14-384", use_fast=True)
         self.dinov3_processor = AutoProcessor.from_pretrained(model_path + "dinov3-vitl16-pretrain-lvd1689m", use_fast=True, size=(448, 448))
 

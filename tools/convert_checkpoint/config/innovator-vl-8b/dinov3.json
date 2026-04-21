@@ -29,11 +29,11 @@
     },
     "name_map": {
         "huggingface": {
-            "transformer": "model",
-            "layer_prefix": "visual.dinov3_model.layer",
+            "transformer": "visual",
+            "layer_prefix": "dinov3_model.layer",
             "input_layernorm": "norm1",
             "attention.query_key_value": "attention.qkv",
-            "attention.dense": "attention.o_proj",
+            "attention.dense": "attention.proj",
             "post_attention_layernorm": "norm2",
             "mlp.dense_h_to_4h": "mlp.up_proj",
             "mlp.dense_4h_to_h": "mlp.down_proj"

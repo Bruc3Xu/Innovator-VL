@@ -1,7 +1,14 @@
 {
-    "vision_model.patch_embed.proj.weight": "visual.patch_embed.proj.weight",
-    "vision_model.class_embedding": "visual.class_embedding",
-    "vision_model.class_pos_emb": "visual.class_pos_emb",
-    "vision_model.pre_layernorm.weight": "visual.pre_layernorm.weight",
-    "vision_model.pre_layernorm.bias": "visual.pre_layernorm.bias"
+    "vision_model.rice_vit.patch_embed.proj.weight": "visual.rice_vit.patch_embed.proj.weight",
+    "vision_model.rice_vit.class_embedding": "visual.rice_vit.class_embedding",
+    "vision_model.rice_vit.class_pos_emb": "visual.rice_vit.class_pos_emb",
+    "vision_model.rice_vit.pre_layernorm.weight": "visual.rice_vit.pre_layernorm.weight",
+    "vision_model.rice_vit.pre_layernorm.bias": "visual.rice_vit.pre_layernorm.bias",
+    "vision_model.siglip_model.conv1.weight": "visual.siglip_model.embeddings.patch_embedding.weight",
+    "vision_model.siglip_model.conv1.bias": "visual.siglip_model.embeddings.patch_embedding.bias",
+    "vision_model.siglip_model.position_embeddings.weight": "visual.siglip_model.embeddings.position_embedding.weight",
+    "vision_model.dinov3_model.patch_embeddings.weight": "visual.dinov3_model.embeddings.patch_embeddings.weight",
+    "vision_model.dinov3_model.patch_embeddings.bias": "visual.dinov3_model.embeddings.patch_embeddings.bias",
+    "vision_model.dinov3_model.cls_token": "visual.dinov3_model.embeddings.cls_token",
+    "vision_model.dinov3_model.register_tokens": "visual.dinov3_model.embeddings.register_tokens"
 }

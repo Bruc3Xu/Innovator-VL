@@ -6,15 +6,15 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 from megatron.core.models.common.vision_module.vision_module import VisionModule
-from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.models.vision.clip_vit_model import CLIPViTModel
 from megatron.core.models.vision.vit_layer_specs import (
     get_vit_layer_with_transformer_engine_spec,
 )
+from megatron.core.transformer.spec_utils import ModuleSpec
+from megatron.core.transformer.transformer_config import TransformerConfig
 
 from aiak_training_llm.models.innovator_vl.dinov3_layer_specs import (
-    get_dinov3_layer_with_transformer_engine_spec
+    get_dinov3_layer_with_transformer_engine_spec,
 )
 from aiak_training_llm.models.innovator_vl.dinov3_vit_model import DINOv3ViTModel
 from aiak_training_llm.models.innovator_vl.innovator_vl_config import VisionConfig
@@ -33,15 +33,19 @@ def get_sliglip2_model():
     )
 
     spec = get_vit_layer_with_transformer_engine_spec()
-    return CLIPViTModel(
+    patch_size = 14
+    size = 384 // patch_size * patch_size
+    model = CLIPViTModel(
         config,
         spec,
         add_class_token=False,
         class_token_len=0,
-        img_h=384,
-        img_w=384,
+        img_h=size,
+        img_w=size,
         model_subtype="siglip",
     )
+    model.ln_post = None  # remove post layer_norm
+    return model
 
 
 def disable_k_bias_for_layer(layer):
@@ -92,13 +96,14 @@ def get_dinov3_model():
         layerscale_value=1.0,
         rope_theta=100.0,
         pos_embed_rescale=2.0,
+        ln_pre_impl=None,
+        ln_post_impl=None
     )
     # for dinov3 config, "key_bias": false
-    for lyr in model.transformer.layers:
+    for lyr in model.decoder.layers:
         disable_k_bias_for_layer(lyr)
 
     return model
-
 
 
 class HybridVisionModel(VisionModule):
@@ -119,13 +124,18 @@ class HybridVisionModel(VisionModule):
         self.dinov3_model = get_dinov3_model()
 
         if config.freeze_external:
-            for module in self.siglip_model:
-                for param in module.parameters():
-                    param.requires_grad = False
+            for param in self.siglip_model.parameters():
+                param.requires_grad = False
+            for param in self.dinov3_model.parameters():
+                param.requires_grad = False
 
-            for module in self.dinov3_model:
-                for param in module.parameters():
-                    param.requires_grad = False
+    def set_input_tensor(self, input_tensor: torch.Tensor) -> None:
+        """Sets input tensor to the model.
+
+        Args:
+            input_tensor (Tensor): Sets the input tensor for the model.
+        """
+        self.rice_vit.set_input_tensor(input_tensor)
 
     def _extract_sequence_features(
         self,
@@ -135,7 +145,8 @@ class HybridVisionModel(VisionModule):
         target_device: torch.device,
     ) -> torch.Tensor:
         """Extract sequence features from an encoder model."""
-        model = model.to(target_device)
+        # model = model.to(target_device)
+        pixel_values = pixel_values.to(target_device, dtype=target_dtype)
         features = model(pixel_values)
 
         # For DINOv3: skip CLS token (1) and register tokens (4) to get pure patch features.

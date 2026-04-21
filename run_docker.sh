@@ -1,0 +1,1 @@
+docker run -it --gpus all --ipc=host --network=host --ulimit memlock=-1 --ulimit stack=67108864 -v /home/zjlab/xrc/s3-data/xrc/Innovator-VL:/workspace/Innovator-VL -v /mnt/si00068187c7/default/innovator_vl/models/:/workspace/models/ -v /mnt/si00068187c7/default/innovator_vl/LLaVA-558K-Webdataset/:/workspace/LLaVA-558K-Webdataset/ innovator-vl-instruct /bin/bash

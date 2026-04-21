@@ -5,7 +5,7 @@ import torch.nn as nn
 import sys
 
 
-sys.path.append("/workspace/aiak_megatron")
+sys.path.append("/workspace/Innovator-VL/aiak_megatron")
 
 
 from megatron.core.models.common.vision_module.vision_module import VisionModule
@@ -63,6 +63,35 @@ def get_sliglip2_model():
         model_subtype="siglip",
     )
 
+
+def disable_k_bias_for_layer(layer):
+    attn = layer.self_attention
+    qkv = getattr(attn, "query_key_value", None)
+    if qkv is None or qkv.bias is None:
+        return
+
+    # 计算各段长度（兼容 MHA 与 MQA/GQA）
+    num_heads = attn.num_attention_heads
+    # hidden_size = attn.hidden_size  # 某些版本可直接拿
+    # 更稳妥地用 head_dim 推导
+    # 对多数实现：head_dim = hidden_size // num_heads
+    # 某些实现直接暴露 kv_channels
+    head_dim = getattr(attn, "kv_channels", None)
+    if head_dim is None:
+        hidden_size = layer.config.hidden_size
+        head_dim = hidden_size // num_heads
+
+    num_kv_heads = getattr(attn, "num_kv_heads", num_heads)  # MHA 时等于 num_heads
+
+    q_len = num_heads * head_dim
+    k_len = num_kv_heads * head_dim
+    k_start, k_end = q_len, q_len + k_len
+
+    with torch.no_grad():
+        qkv.bias[k_start:k_end].zero_()
+    qkv.bias[k_start:k_end].requires_grad_(False)
+
+
 def get_dinov3_model():
     config = TransformerConfig(
         num_layers=24,
@@ -74,7 +103,7 @@ def get_dinov3_model():
     )
     spec = get_dinov3_layer_with_transformer_engine_spec()
 
-    return DINOv3ViTModel(
+    model = DINOv3ViTModel(
         config,
         spec,
         patch_dim=16,
@@ -84,13 +113,26 @@ def get_dinov3_model():
         rope_theta=100.0,
         pos_embed_rescale=2.0,
     )
+    # for dinov3 config, "key_bias": false
+    for lyr in model.decoder.layers:
+        disable_k_bias_for_layer(lyr)
+
+    return model
 
 initialize_distributed()
 model = get_sliglip2_model()
 print(model)
 
+
+for param in model.parameters():
+    param.requires_grad = False
+
 model = get_dinov3_model()
 print(model)
+
+
+for param in model.parameters():
+    param.requires_grad = False
 
 spec = get_vit_layer_with_transformer_engine_spec()
 vision_config = TransformerConfig(num_layers=24,
@@ -118,3 +160,8 @@ vision_config.in_channels = 3
 vision_config.spatial_merge_size = 2
 model = RiceViTModel(vision_config, spec)
 print(model)
+
+for param in model.parameters():
+    param.requires_grad = False
+
+# torchrun --n_gpu_per_node 2 test_mcore_model.py

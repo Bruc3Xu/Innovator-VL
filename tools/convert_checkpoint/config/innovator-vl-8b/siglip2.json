@@ -29,11 +29,11 @@
     },
     "name_map": {
         "huggingface": {
-            "transformer": "model",
-            "layer_prefix": "visual.siglip_model.encoder.layers",
+            "transformer": "visual",
+            "layer_prefix": "siglip_model.encoder.layers",
             "input_layernorm": "layer_norm1",
             "attention.query_key_value": "self_attn.qkv",
-            "attention.dense": "self_attn.out_proj",
+            "attention.dense": "self_attn.proj",
             "post_attention_layernorm": "layer_norm2",
             "mlp.dense_h_to_4h": "mlp.fc1",
             "mlp.dense_4h_to_h": "mlp.fc2"

@@ -2,12 +2,15 @@ import torch
 from transformers import AutoImageProcessor, AutoModel, AutoProcessor, SiglipVisionModel
 from transformers.image_utils import load_image
 
-url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-image = load_image(url)
+
+from PIL import Image
+
+url = "ds/demo.jpeg"
+image = Image.open(url)
 
 
 def dinov3_fwd():
-    pretrained_model_name = "models/dinov3-vitl16-pretrain-lvd1689m"
+    pretrained_model_name = "/workspace/models/dinov3-vitl16-pretrain-lvd1689m"
     processor = AutoImageProcessor.from_pretrained(pretrained_model_name)
     model = AutoModel.from_pretrained(pretrained_model_name).to("cuda:0")
     print(model)
@@ -47,5 +50,5 @@ def siglip_fwd():
     return last_hidden_state
 
 
-# dinov3_fwd()
-siglip_fwd()
+dinov3_fwd()
+# siglip_fwd()
