@@ -22,7 +22,7 @@ class Qwen2VLMultiEncoderTaskEncoder(Qwen2VLTaskEncoder):
         super().__init__(args)
         model_path = "/workspace/models/"
         self.siglip_processor = AutoProcessor.from_pretrained(model_path + "siglip2-so400m-patch14-384", use_fast=True)
-        self.dinov3_processor = AutoProcessor.from_pretrained(model_path + "dinov3-vitl16-pretrain-lvd1689m", use_fast=True, size=(448, 448))
+        self.dinov3_processor = AutoProcessor.from_pretrained(model_path + "dinov3-vitl16-pretrain-lvd1689m", use_fast=True, size=(512, 512))
 
     def _to_image_list(self, images):
         if images is None:
@@ -43,6 +43,7 @@ class Qwen2VLMultiEncoderTaskEncoder(Qwen2VLTaskEncoder):
         if len(image_list) == 0:
             return []
         pixel_values = self.dinov3_processor(images=image_list, return_tensors="pt")["pixel_values"]
+        return [pixel_values]
 
     def _process_with_aux_pixels(self, image, text):
         input_ids, target, pixel_values, image_grid_thw, attn_mask = self._process(image, text)

@@ -145,7 +145,6 @@ class HybridVisionModel(VisionModule):
         target_device: torch.device,
     ) -> torch.Tensor:
         """Extract sequence features from an encoder model."""
-        # model = model.to(target_device)
         pixel_values = pixel_values.to(target_device, dtype=target_dtype)
         features = model(pixel_values)
 

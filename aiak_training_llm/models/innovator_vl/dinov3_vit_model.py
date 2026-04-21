@@ -329,6 +329,12 @@ class DINOv3ViTModel(VisionModule):
         Returns:
             x (torch.Tensor): Output after final transformer block of shape [b, s, h].
         """
+        x = x.to(self.patch_embeddings.weight.dtype)
+
+        # Compute 2D RoPE embeddings (only for patch tokens)
+        # cos, sin have shape (num_patches, head_dim)
+        cos, sin = self.rope_embeddings(x)
+
         batch_size = x.shape[0]
 
         # Patch embedding: [b, c, h, w] -> [b, hidden, h//patch, w//patch]
@@ -347,10 +353,6 @@ class DINOv3ViTModel(VisionModule):
             x = torch.cat([cls_tokens, x], dim=1)
 
         assert x.shape[1] == self.seq_length, f"{x.shape[1]} != {self.seq_length}"
-
-        # Compute 2D RoPE embeddings (only for patch tokens)
-        # cos, sin have shape (num_patches, head_dim)
-        cos, sin = self.rope_embeddings(x)
 
         # Pre-normalization
         if self.ln_pre:
