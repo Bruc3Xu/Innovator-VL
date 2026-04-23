@@ -1,0 +1,1 @@
+ps aux | grep python3.12 | grep -v grep | awk '{print $2}' | xargs kill -9

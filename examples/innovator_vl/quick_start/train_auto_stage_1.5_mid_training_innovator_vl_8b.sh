@@ -36,29 +36,29 @@ export MY_PORT=${MY_PORT:-8469}
 # ---------------------------
 # 项目路径 / 参数
 # ---------------------------
-AIAK_TRAINING_PATH="${AIAK_TRAINING_PATH:-/mnt/innovator/code/wenzichen/Innovator-VL}"
+AIAK_TRAINING_PATH="${AIAK_TRAINING_PATH:-/mnt/si00068187c7/default/innovator_vl/Innovator-VL}"
 AIAK_MAGATRON_PATH="${AIAK_MAGATRON_PATH:-${AIAK_TRAINING_PATH%/}/aiak_megatron}"
 
-TP="${1:-2}" # tensor parallel
+TP="${1:-1}" # tensor parallel
 PP="${2:-1}" # pipeline parallel
 SEQ_LEN="${3:-32768}" # sequence length
 MBS="${4:-1}" # micro batch size
 GBS="${5:-96}" # global batch size 
-NSTEP="${6:-78373}" # number of steps 
-SAVE_INTERVAL="${7:-5000}" # save interval
+NSTEP="${6:-4000}" # number of steps
+SAVE_INTERVAL="${7:-500}" # save interval
 
 echo "TP=${TP}, PP=${PP}, SEQ_LEN=${SEQ_LEN}, MBS=${MBS}, GBS=${GBS}, NSTEP=${NSTEP}, SAVE_INTERVAL=${SAVE_INTERVAL}"
 
 # Stage 1.5 specific paths - using stage 1 alignment checkpoint as starting point
-DATA_PATH=${DATA_PATH:-"/mnt/innovator/data/wenzichen/Innovator-VL-Mid-Training-Webdataset-Quick-Start-3M"}  # 384332 samples
-TOKENIZER_PATH=${TOKENIZER_PATH:-"/mnt/innovator/model/wenzichen/Innovator-VL-8B-stage0"}
-CHECKPOINT_PATH=${CHECKPOINT_PATH:-"/path/to/checkpoints/stage_1_alignment_innovator_vl_8b"}
+DATA_PATH=${DATA_PATH:-"/mnt/si000268ks12/default/wuyanfeng/datasets/LLaVA-OneVision-1.5-Mid-Training-Webdataset-Quick-Start-3M/"}  # 384332 samples
+TOKENIZER_PATH=${TOKENIZER_PATH:-"/mnt/si00068187c7/default/innovator_vl/models/qwen3-8b-hybrid-vit-stage0"}
+CHECKPOINT_PATH=${CHECKPOINT_PATH:-"/mnt/si00068187c7/default/innovator_vl/Innovator-VL/checkpoints/stage1_last"}
 
 # if resume from checkpoint, set the checkpoint path
 RESUME_FROM_CHECKPOINT=${RESUME_FROM_CHECKPOINT:-"/path/to/checkpoints/stage_1.5_mid_training_innovator_vl_8b"}
 
 # set the save checkpoint path and tensorboard path
-SAVE_CKPT_PATH=${SAVE_CKPT_PATH:-"/path/to/checkpoints/stage_1.5_mid_training_innovator_vl_8b"}
+SAVE_CKPT_PATH=${SAVE_CKPT_PATH:-"/mnt/si00068187c7/default/innovator_vl/Innovator-VL/checkpoints/stage_1.5_mid_training_innovator_vl_8b"}
 TENSORBOARD_PATH="${SAVE_CKPT_PATH}/tensorboard"
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
@@ -269,6 +269,7 @@ TRAINING_ARGS=(
     --lr-warmup-fraction 0.002
     --initial-loss-scale 65536
     --bf16
+    --use-hybrid-vision-model
 )
 
 LOAD_ARGS=()
@@ -339,8 +340,7 @@ logfile="${SAVE_CKPT_PATH}/run_${TM}_tp${TP}_pp${PP}_seqlen${SEQ_LEN}_mbs${MBS}_
 # Stage 1.5 specific environment variables
 export OFFLINE_PACKED_DATA='1'
 export OFFLINE_PACKING_VQA='1'
-export PYTORCH_CUDA_ALLOC_CONF=backend:cudaMallocAsync
-# export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-max_split_size_mb:128,garbage_collection_threshold:0.72}
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # network tweaks
 export NCCL_ASYNC_ERROR_HANDLING=${NCCL_ASYNC_ERROR_HANDLING:-1}

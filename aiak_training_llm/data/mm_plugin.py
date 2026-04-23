@@ -20,6 +20,8 @@ from aiak_training_llm.utils.constants import Placeholder
 from PIL import Image
 from PIL.Image import Image as ImageObject
 
+import torch
+
 
 if TYPE_CHECKING:
     import torch
@@ -302,3 +304,150 @@ class Qwen2VLPlugin(MMPlugin):
     ) -> Dict[str, Union[List[int], "torch.Tensor"]]:
         self._validate_input(images, videos)
         return self._get_mm_inputs(images, videos, processor)
+
+
+def create_dinov3_processor():
+    import numpy as np
+    import torch
+    import torch.nn.functional as F
+    import torchvision.transforms.functional as TVF
+    from torchvision import transforms
+    from PIL import Image
+    mean = torch.tensor([0.485, 0.456, 0.406]).view(3,1,1)
+    std  = torch.tensor([0.229, 0.224, 0.225]).view(3,1,1)
+    size = (512, 512)
+    rescale_factor = 1.0 / 255.0
+
+    def preprocess(image):
+        # 输入：PIL Image 或 numpy array (H,W,C) uint8 [0,255]
+        if isinstance(image, np.ndarray):
+            image = Image.fromarray(image.astype('uint8'))
+        # 1. 转换为 tensor，保持范围 [0,255]，形状 [C, H, W]
+        tensor = torch.from_numpy(np.array(image)).permute(2,0,1).float()  # [C,H,W], float, 范围 [0,255]
+        # 2. Rescale（除以255）
+        tensor = tensor * rescale_factor   # 与原始 self.rescale 完全一致
+        # 3. Resize（双线性插值，antialias=True）
+        tensor = TVF.resize(tensor, size, interpolation=TVF.InterpolationMode.BILINEAR, antialias=True)
+        # 4. Normalize
+        tensor = (tensor - mean) / std
+        return tensor.unsqueeze(0)
+    return preprocess
+
+
+class HybridVisionPlugin(Qwen2VLPlugin):
+    """Hybrid Vision Plugin that supports SigLIP2 and DINOv3 alongside Qwen2VL.
+
+    This plugin extends Qwen2VLPlugin to provide additional image processing
+    for hybrid vision models that use multiple encoders (RiceViT + SigLIP2 + DINOv3).
+    """
+
+    def __init__(self, image_token: Optional[str], video_token: Optional[str]) -> None:
+        super().__init__(image_token, video_token)
+        self.siglip_processor = None
+        self.dinov3_processor = None
+
+    def _init_processors(self, processor: Optional["ProcessorMixin"]) -> None:
+        """Initialize SigLIP and DINOv3 processors."""
+        if self.siglip_processor is None:
+            from transformers import AutoProcessor
+            model_path = "/mnt/si00068187c7/default/innovator_vl/models/"
+            self.siglip_processor = AutoProcessor.from_pretrained(
+                model_path + "siglip2-so400m-patch14-384",
+                use_fast=True
+            )
+        if self.dinov3_processor is None:
+            self.dinov3_processor = create_dinov3_processor()
+
+    def _process_siglip_images(self, images: Sequence["ImageInput"]) -> torch.Tensor:
+        """Process images for SigLIP2 encoder."""
+        image_list = []
+        for image in images:
+            if isinstance(image, str):
+                image = Image.open(image)
+            elif isinstance(image, dict):
+                if image["bytes"] is not None:
+                    image = Image.open(BytesIO(image["bytes"]))
+                else:
+                    image = Image.open(image["path"])
+            if isinstance(image, ImageObject):
+                image_list.append(image)
+
+        if len(image_list) == 0:
+            return None
+        pixel_values = self.siglip_processor(images=image_list, return_tensors="pt")["pixel_values"]
+        return pixel_values
+
+    def _process_dinov3_images(self, images: Sequence["ImageInput"]) -> torch.Tensor:
+        """Process images for DINOv3 encoder."""
+        image_list = []
+        for image in images:
+            if isinstance(image, str):
+                image = Image.open(image)
+            elif isinstance(image, dict):
+                if image["bytes"] is not None:
+                    image = Image.open(BytesIO(image["bytes"]))
+                else:
+                    image = Image.open(image["path"])
+            if isinstance(image, ImageObject):
+                image_list.append(image)
+
+        if len(image_list) == 0:
+            return None
+        pixel_values = []
+        for image in image_list:
+            pixel_values.append(self.dinov3_processor(image).unsqueeze(0))
+        return pixel_values
+
+    @override
+    def process_messages(
+        self,
+        messages: Sequence[Dict[str, str]],
+        images: Sequence["ImageInput"],
+        videos: Sequence["VideoInput"],
+        processor: Optional["ProcessorMixin"],
+    ) -> List[Dict[str, str]]:
+        """Process messages and return both messages and mm_inputs."""
+        self._validate_input(images, videos)
+        self._init_processors(processor)
+
+        # Call parent's process_messages to get message processing and base mm_inputs
+        messages, mm_inputs = super().process_messages(messages, images, videos, processor)
+
+        # Add hybrid vision inputs
+        if len(images) > 0:
+            siglip_pixel_values = self._process_siglip_images(images)
+            dinov3_pixel_values = self._process_dinov3_images(images)
+            if siglip_pixel_values is not None:
+                mm_inputs["pixel_values_images_siglip"] = siglip_pixel_values
+            if dinov3_pixel_values is not None:
+                mm_inputs["pixel_values_images_dinov3"] = dinov3_pixel_values
+
+        return messages, mm_inputs
+
+    @override
+    def get_mm_inputs(
+        self,
+        images: Sequence["ImageInput"],
+        videos: Sequence["VideoInput"],
+        imglens: Sequence[int],
+        vidlens: Sequence[int],
+        seqlens: Sequence[int],
+        processor: Optional["ProcessorMixin"],
+    ) -> Dict[str, Union[List[int], "torch.Tensor"]]:
+        """Build batched multimodal inputs for hybrid vision models."""
+        self._validate_input(images, videos)
+        self._init_processors(processor)
+
+        # Get base mm_inputs from parent
+        mm_inputs = self._get_mm_inputs(images, videos, processor)
+
+        # Add hybrid vision inputs
+        if len(images) > 0:
+            siglip_pixel_values = self._process_siglip_images(images)
+            dinov3_pixel_values = self._process_dinov3_images(images)
+            if siglip_pixel_values is not None:
+                mm_inputs["pixel_values_images_siglip"] = siglip_pixel_values
+            if dinov3_pixel_values is not None:
+                mm_inputs["pixel_values_images_dinov3"] = dinov3_pixel_values
+
+        return mm_inputs

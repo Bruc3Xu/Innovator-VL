@@ -36,7 +36,7 @@ export MY_PORT=${MY_PORT:-8469}
 # ---------------------------
 # 项目路径 / 参数
 # ---------------------------
-AIAK_TRAINING_PATH="${AIAK_TRAINING_PATH:-/mnt/innovator/code/wenzichen/Innovator-VL}"
+AIAK_TRAINING_PATH="${AIAK_TRAINING_PATH:-/mnt/si00068187c7/default/innovator_vl//Innovator-VL}"
 AIAK_MAGATRON_PATH="${AIAK_MAGATRON_PATH:-${AIAK_TRAINING_PATH%/}/aiak_megatron}"
 
 TP="${1:-1}" # tensor parallel
@@ -44,20 +44,20 @@ PP="${2:-1}" # pipeline parallel
 SEQ_LEN="${3:-32768}" # sequence length
 MBS="${4:-1}" # micro batch size
 GBS="${5:-288}" # global batch size
-NSTEP="${6:-171875}" # number of steps, updated for stage 2
-SAVE_INTERVAL="${7:-5000}" # save interval
+NSTEP="${6:-2710}" # number of steps, updated for stage 2
+SAVE_INTERVAL="${7:-500}" # save interval
 
 # Stage 2 specific paths - using stage 1.5 checkpoint as starting point
 # /mnt/innovator/data/chenshuang/Innovator-VL-Insturct-Data-wds-unpacked/1031  # 25M
-DATA_PATH=${DATA_PATH:-"/path/to/dataset/Mix-Stage-1"}  
-TOKENIZER_PATH=${TOKENIZER_PATH:-"/mnt/innovator/model/wenzichen/Innovator-VL-8B-stage0"}
-CHECKPOINT_PATH=${CHECKPOINT_PATH:-"/path/to/checkpoints/stage_1.5_mid_training_innovator_vl_8b"}
+DATA_PATH=${DATA_PATH:-"/mnt/si000268ks12/default/wuyanfeng/datasets/LLaVA-NeXT-780k-webdataset"}
+TOKENIZER_PATH=${TOKENIZER_PATH:-"/mnt/si00068187c7/default/innovator_vl/models/qwen3-8b-hybrid-vit-stage0"}
+CHECKPOINT_PATH=${CHECKPOINT_PATH:-"/mnt/si00068187c7/default/innovator_vl/Innovator-VL/checkpoints/stage1.5_last"}
 
 # if resume from checkpoint, set the checkpoint path
-RESUME_FROM_CHECKPOINT=${RESUME_FROM_CHECKPOINT:-"/mnt/innovator/code/wenzichen/Innovator-VL/checkpoints/0101_SFT_Stage1_44M_Mixed_Sci_Data_V1"}
+RESUME_FROM_CHECKPOINT=${RESUME_FROM_CHECKPOINT:-"/mnt/si00068187c7/default/innovator_vl/Innovator-VL/checkpoints/0101_SFT_Stage1_44M_Mixed_Sci_Data_V1"}
 
 # set the save checkpoint path and tensorboard path
-SAVE_CKPT_PATH=${SAVE_CKPT_PATH:-"/mnt/innovator/code/wenzichen/Innovator-VL/checkpoints/0101_SFT_Stage1_44M_Mixed_Sci_Data_V1"}
+SAVE_CKPT_PATH=${SAVE_CKPT_PATH:-"/mnt/si00068187c7/default/innovator_vl/Innovator-VL/checkpoints/stage_2_sft_innovator_vl_8b"}
 TENSORBOARD_PATH="${SAVE_CKPT_PATH}/tensorboard"
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
@@ -257,7 +257,8 @@ TRAINING_ARGS=(
     --bf16
     --enable-discard-sample
     # --record-memory-history
-    # --memory-snapshot-path "/mnt/innovator/code/wenzichen/Innovator-VL/checkpoints/memory_snapshot.pickle"
+    # --memory-snapshot-path "/mnt/si00068187c7/default/innovator_vl//Innovator-VL/checkpoints/memory_snapshot.pickle"
+    --use-hybrid-vision-model
 )
 
 LOAD_ARGS=()
@@ -328,8 +329,7 @@ logfile="${SAVE_CKPT_PATH}/run_${TM}_tp${TP}_pp${PP}_seqlen${SEQ_LEN}_mbs${MBS}_
 # Stage 2 specific environment variables
 export OFFLINE_PACKED_DATA='0'
 export OFFLINE_PACKING_VQA='0'
-export PYTORCH_CUDA_ALLOC_CONF=backend:cudaMallocAsync
-# export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-max_split_size_mb:128,garbage_collection_threshold:0.72}
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # network tweaks
 export NCCL_ASYNC_ERROR_HANDLING=${NCCL_ASYNC_ERROR_HANDLING:-1}

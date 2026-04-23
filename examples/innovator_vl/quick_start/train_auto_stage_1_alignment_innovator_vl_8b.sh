@@ -14,9 +14,9 @@ fi
 # export NCCL_DEBUG=INFO
 # export NCCL_DEBUG_SUBSYS=ALL
 export CUDA_DEVICE_MAX_CONNECTIONS=${CUDA_DEVICE_MAX_CONNECTIONS:-1}
-export NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-1}
-# export NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX:-3}
-# export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-mlx5_3}
+export NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0}
+export NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX:-3}
+export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-mlx5_3}
 export NCCL_IB_TIMEOUT=${NCCL_IB_TIMEOUT:-50}
 export NCCL_TIMEOUT=${NCCL_TIMEOUT:-3600}
 export NCCL_BLOCKING_WAIT=${NCCL_BLOCKING_WAIT:-1}
@@ -36,29 +36,29 @@ export MY_PORT=${MY_PORT:-8469}
 # ---------------------------
 # 项目路径 / 参数
 # ---------------------------
-AIAK_TRAINING_PATH="${AIAK_TRAINING_PATH:-/workspace/Innovator-VL}"
+AIAK_TRAINING_PATH="${AIAK_TRAINING_PATH:-/mnt/si00068187c7/default/innovator_vl/Innovator-VL}"
 AIAK_MAGATRON_PATH="${AIAK_MAGATRON_PATH:-${AIAK_TRAINING_PATH%/}/aiak_megatron}"
 
-TP="${1:-8}" # tensor parallel
+TP="${1:-1}" # tensor parallel
 PP="${2:-1}" # pipeline parallel
-SEQ_LEN="${3:-32768}" # sequence length
+SEQ_LEN="${3:-8192}" # sequence length
 MBS="${4:-1}" # micro batch size
 GBS="${5:-8}" # global batch size
-NSTEP="${6:-4000}" # number of steps
+NSTEP="${6:-3000}" # number of steps
 SAVE_INTERVAL="${7:-500}" # save interval
 
 echo "TP=${TP}, PP=${PP}, SEQ_LEN=${SEQ_LEN}, MBS=${MBS}, GBS=${GBS}, NSTEP=${NSTEP}, SAVE_INTERVAL=${SAVE_INTERVAL}"
 
 # Stage 1 specific paths
-DATA_PATH=${DATA_PATH:-"/workspace/LLaVA-558K-Webdataset"}  # 23988 packed samples
-TOKENIZER_PATH=${TOKENIZER_PATH:-"/workspace/models/qwen3-8b-hybrid-vit-stage0"}
-CHECKPOINT_PATH=${CHECKPOINT_PATH:-"/workspace/models/qwen3-8b-hybrid-vit-stage0_mcore_tp${TP}_pp${PP}"}
+DATA_PATH=${DATA_PATH:-"/mnt/si00068187c7/default/innovator_vl/LLaVA-558K-Webdataset"}  # 23988 packed samples
+TOKENIZER_PATH=${TOKENIZER_PATH:-"/mnt/si00068187c7/default/innovator_vl/models/qwen3-8b-hybrid-vit-stage0"}
+CHECKPOINT_PATH=${CHECKPOINT_PATH:-"/mnt/si00068187c7/default/innovator_vl/models/qwen3-8b-hybrid-vit-stage0_mcore_tp${TP}_pp${PP}"}
 
 # if resume from checkpoint, set the checkpoint path
-RESUME_FROM_CHECKPOINT=${RESUME_FROM_CHECKPOINT:-"/path/to/checkpoints/stage_1_alignment_innovator_vl_8b"}
+RESUME_FROM_CHECKPOINT=${RESUME_FROM_CHECKPOINT:-""}
 
 # set the save checkpoint path and tensorboard path
-SAVE_CKPT_PATH=${SAVE_CKPT_PATH:-"/workspace/models/stage_1_alignment_innovator_vl_8b"}
+SAVE_CKPT_PATH=${SAVE_CKPT_PATH:-"${AIAK_TRAINING_PATH%/}/checkpoints/stage_1_alignment_innovator_vl_8b"}
 TENSORBOARD_PATH="${SAVE_CKPT_PATH}/tensorboard"
 
 
@@ -199,7 +199,7 @@ echo "NO_PROXY set to: $NO_PROXY"
 # ---------------------------
 mkdir -p "$SAVE_CKPT_PATH" "$TENSORBOARD_PATH" "$SAVE_CKPT_PATH/dataloader"
 chmod 777 "$TENSORBOARD_PATH"
-GPUS_PER_NODE=${GPUS_PER_NODE:-2}
+GPUS_PER_NODE=${GPUS_PER_NODE:-8}
 
 if [[ "${WORLD_SIZE}" -eq 1 ]]; then
   DISTRIBUTED_ARGS=( --nproc_per_node "$GPUS_PER_NODE" )
@@ -254,7 +254,7 @@ TRAINING_ARGS=(
     --init-method-std 0.02
     --micro-batch-size "${MBS}"
     --global-batch-size "${GBS}"
-    --lr 1.0e-4
+    --lr 1.0e-3
     --min-lr 1.0e-6
     --clip-grad 1.0
     --weight-decay 0
@@ -266,7 +266,7 @@ TRAINING_ARGS=(
     --train-iters "$NSTEP"
     --lr-decay-iters "$NSTEP"
     --lr-decay-style cosine
-    --lr-warmup-fraction 0.002
+    --lr-warmup-fraction 0.05
     --initial-loss-scale 65536
     --bf16
     --use-hybrid-vision-model
@@ -304,9 +304,9 @@ TRAINING_ARGS+=(
     --ckpt-format torch
     --dataloader-save "${SAVE_CKPT_PATH}/dataloader"
     --ckpt-fully-parallel-load
-    --recompute-granularity full
-    --recompute-method uniform
-    --recompute-num-layers 4
+    # --recompute-granularity full
+    # --recompute-method uniform
+    # --recompute-num-layers 4
     # --override-opt_param-scheduler
     # --eval-interval 50        
     # --eval-iters 10          
@@ -345,8 +345,8 @@ export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:Tr
 # network tweaks
 export NCCL_ASYNC_ERROR_HANDLING=${NCCL_ASYNC_ERROR_HANDLING:-1}
 export NCCL_TREE_THRESHOLD=${NCCL_TREE_THRESHOLD:-0}
-# export NCCL_IB_HCA=${NCCL_IB_HCA:-mlx5_3}
-# export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-eth0}
+export NCCL_IB_HCA=${NCCL_IB_HCA:-mlx5_3}
+export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-eth0}
 
 # ---------------------------
 # Launch
