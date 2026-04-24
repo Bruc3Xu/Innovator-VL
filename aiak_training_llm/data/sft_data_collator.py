@@ -86,7 +86,6 @@ class MultiModalDataCollatorForSupervisedDataset(DataCollatorForSupervisedDatase
     """ Multi-modal data collator  """
     processor: "ProcessorMixin" = None
     plugin: "MMPlugin" = None
-    use_hybrid_vision: bool = False
     def __call__(self, features: Sequence[Dict[str, Any]]) -> Dict[str, "torch.Tensor"]:
         # Truncate features FIRST if they are longer than max_length
         if self.max_length is not None:
@@ -96,7 +95,6 @@ class MultiModalDataCollatorForSupervisedDataset(DataCollatorForSupervisedDatase
                         feature[key] = feature[key][:self.max_length]
 
         batch_images, batch_videos, batch_imglens, batch_vidlens, batch_seqlens = [], [], [], [], []
-        batch_siglip_images, batch_dinov3_images = [], []
         for feature in features:
             images = feature.pop("images", None) or []
             videos = feature.pop("videos", None) or []
@@ -105,13 +103,6 @@ class MultiModalDataCollatorForSupervisedDataset(DataCollatorForSupervisedDatase
             batch_imglens.append(len(images))
             batch_vidlens.append(len(videos))
             batch_seqlens.append(len(feature["input_ids"]))
-
-            # Handle hybrid vision model inputs
-            if self.use_hybrid_vision:
-                siglip_images = feature.pop("pixel_values_images_siglip", None) or []
-                dinov3_images = feature.pop("pixel_values_images_dinov3", None) or []
-                batch_siglip_images.extend(siglip_images)
-                batch_dinov3_images.extend(dinov3_images)
 
         mm_inputs = self.plugin.get_mm_inputs(
             batch_images, batch_videos, batch_imglens, batch_vidlens, batch_seqlens, self.processor
@@ -126,12 +117,5 @@ class MultiModalDataCollatorForSupervisedDataset(DataCollatorForSupervisedDatase
         if "pixel_values_videos" in mm_inputs:
             features['videos'] = mm_inputs.get('pixel_values_videos')
             features['video_grid_thw'] = mm_inputs.get('video_grid_thw')
-
-        # Add hybrid vision model inputs
-        if self.use_hybrid_vision:
-            if batch_siglip_images:
-                features['pixel_values_images_siglip'] = torch.cat(batch_siglip_images, dim=0)
-            if batch_dinov3_images:
-                features['pixel_values_images_dinov3'] = torch.cat(batch_dinov3_images, dim=0)
 
         return features

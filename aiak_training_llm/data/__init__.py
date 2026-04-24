@@ -7,7 +7,7 @@ from .sft_dataset import SFTDataset, SFTDatasetConfig
 
 from .chat_templete import ChatTemplate, get_support_templates
 
-from .mm_plugin import MMPlugin, HybridVisionPlugin
+from .mm_plugin import MMPlugin
 
 from .sft_data_collator import DataCollatorForSupervisedDataset, MultiModalDataCollatorForSupervisedDataset
 
@@ -22,7 +22,6 @@ __all__ = [
     "ChatTemplate",
     "get_support_templates",
     "MMPlugin",
-    "HybridVisionPlugin",
     "DataCollatorForSupervisedDataset",
     "MultiModalDataCollatorForSupervisedDataset",
     "CaptionDataset",

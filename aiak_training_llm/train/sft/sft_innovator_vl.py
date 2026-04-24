@@ -33,8 +33,7 @@ from aiak_training_llm.data import (
     SFTDataset,
     SFTDatasetConfig,
     BlendedHuggingFaceDatasetBuilder,
-    MultiModalDataCollatorForSupervisedDataset,
-    HybridVisionPlugin,
+    MultiModalDataCollatorForSupervisedDataset
 )
 from .utils import build_sft_cyclic_iterators, get_dataset_blend_from_list, build_sft_data_collator
 
@@ -61,7 +60,6 @@ def model_provider(pre_process=True, post_process=True):
 
 def get_batch(data_iterator):
     """Generate a batch"""
-    args = get_args()
 
     # get batches based on the TP rank you are on
     if data_iterator is not None:
@@ -70,31 +68,15 @@ def get_batch(data_iterator):
         data = None
 
     data_i = tensor_parallel.broadcast_data([
-        "input_ids",
-        # "position_ids",
-        "attention_mask",
-        "labels",
-        "loss_mask",
-        "image_grid_thw",
+        "input_ids", 
+        # "position_ids", 
+        "attention_mask", 
+        "labels", 
+        "loss_mask", 
+        "image_grid_thw", 
         "loss_mask"
     ], data, torch.int64)
     data_f = tensor_parallel.broadcast_data(["images"], data, torch.float32)
-
-    # Handle hybrid vision model inputs
-    use_hybrid_vision_model = getattr(args, "use_hybrid_vision_model", False)
-    pixel_values_images_siglip = None
-    pixel_values_images_dinov3 = None
-    if use_hybrid_vision_model:
-        pixel_values_images_siglip = tensor_parallel.broadcast_data(
-            ["pixel_values_images_siglip"],
-            data,
-            torch.float32
-        )["pixel_values_images_siglip"]
-        pixel_values_images_dinov3 = tensor_parallel.broadcast_data(
-            ["pixel_values_images_dinov3"],
-            data,
-            torch.float32
-        )["pixel_values_images_dinov3"]
 
     # slice batch along sequence dimension for context parallelism
     assert mpu.get_context_parallel_world_size() == 1, "not implemented"
@@ -106,8 +88,6 @@ def get_batch(data_iterator):
     batch = (
         data_f['images'],
         data_i['image_grid_thw'],
-        pixel_values_images_siglip,
-        pixel_values_images_dinov3,
         data_i['input_ids'],
         None,
         attention_mask,
@@ -188,25 +168,14 @@ def forward_step(data_iterator, model):
 
     global stimer
     with stimer(bdata=True):
-        images, image_grid_thw, pixel_values_images_siglip, pixel_values_images_dinov3, \
-            input_ids, position_ids, attention_mask, labels, loss_mask, attn_mask_type \
+        images, image_grid_thw, input_ids, position_ids, attention_mask, labels, loss_mask, attn_mask_type \
             = get_batch(data_iterator)
-
+        
     timers('batch-generator').stop()
 
     with stimer:
-        output_tensor = model(
-            images,
-            image_grid_thw,
-            input_ids,
-            position_ids,
-            attention_mask,
-            attn_mask_type,
-            labels,
-            pixel_values_images_siglip=pixel_values_images_siglip,
-            pixel_values_images_dinov3=pixel_values_images_dinov3,
-        )
-
+        output_tensor = model(images, image_grid_thw, input_ids, position_ids, attention_mask, attn_mask_type, labels)
+ 
     return output_tensor, partial(loss_func, loss_mask)
 
 
@@ -268,31 +237,10 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
     print_rank_0(f"> building sft train, validation, and test datasets for {args.model_name} ...")
 
-    # Use HybridVisionPlugin when use_hybrid_vision_model is enabled
-    use_hybrid_vision_model = getattr(args, "use_hybrid_vision_model", False)
-    if use_hybrid_vision_model:
-        # Get image/video tokens from existing plugin or use defaults
-        image_token = "<image>"
-        video_token = "<video>"
-        if config.chat_template is not None and hasattr(config.chat_template, 'mm_plugin'):
-            image_token = getattr(config.chat_template.mm_plugin, 'image_token', image_token) or image_token
-            video_token = getattr(config.chat_template.mm_plugin, 'video_token', video_token) or video_token
-        mm_plugin = HybridVisionPlugin(
-            image_token=image_token,
-            video_token=video_token,
-        )
-    elif config.chat_template is not None and hasattr(config.chat_template, 'mm_plugin'):
-        mm_plugin = config.chat_template.mm_plugin
-    else:
-        # Default to Qwen2VLPlugin
-        from aiak_training_llm.data.mm_plugin import Qwen2VLPlugin
-        mm_plugin = Qwen2VLPlugin(image_token="<image>", video_token="<video>")
-
     data_collator = build_sft_data_collator(
         MultiModalDataCollatorForSupervisedDataset,
         processor=config.processor,
-        plugin=mm_plugin,
-        use_hybrid_vision=use_hybrid_vision_model,
+        plugin=config.chat_template.mm_plugin,
     )
 
     train_iter, valid_iter, test_iter = build_sft_cyclic_iterators(train_ds, valid_ds, test_ds, data_collator)
