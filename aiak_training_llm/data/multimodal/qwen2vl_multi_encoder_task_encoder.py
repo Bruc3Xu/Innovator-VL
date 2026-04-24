@@ -6,6 +6,10 @@ import re
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torchvision.transforms.functional as TVF
+from torchvision import transforms
+from PIL import Image
+
 from megatron.energon import CaptioningSample, VQASample
 from transformers import AutoProcessor
 
@@ -15,14 +19,38 @@ from aiak_training_llm.utils import constants
 from .qwen2vl_task_encoder import IGNORE_INDEX, IMAGE_TOKEN_WITH_TAGS, Qwen2VLImageTaskSample, Qwen2VLTaskEncoder
 
 
+def create_dinov3_processor():
+    mean = torch.tensor([0.485, 0.456, 0.406]).view(3,1,1)
+    std  = torch.tensor([0.229, 0.224, 0.225]).view(3,1,1)
+    size = (512, 512)
+    rescale_factor = 1.0 / 255.0
+
+    def preprocess(image):
+        # 输入：PIL Image 或 numpy array (H,W,C) uint8 [0,255]
+        if isinstance(image, np.ndarray):
+            image = Image.fromarray(image.astype('uint8'))
+        # 调试：检查 image 类型和转换后的形状
+        arr = np.array(image)
+        # 1. 转换为 tensor，保持范围 [0,255]，形状 [C, H, W]
+        tensor = torch.from_numpy(arr).permute(2,0,1).float()  # [C,H,W], float, 范围 [0,255]
+        # 2. Rescale（除以255）
+        tensor = tensor * rescale_factor   # 与原始 self.rescale 完全一致
+        # 3. Resize（双线性插值，antialias=True）
+        tensor = TVF.resize(tensor, size, interpolation=TVF.InterpolationMode.BILINEAR, antialias=True)
+        # 4. Normalize
+        tensor = (tensor - mean) / std
+        return tensor.unsqueeze(0)
+    return preprocess
+
+
 class Qwen2VLMultiEncoderTaskEncoder(Qwen2VLTaskEncoder):
     """Extends the default Qwen2-VL encoder with a second SigLIP pixel stream."""
 
     def __init__(self, args):
         super().__init__(args)
-        model_path = "/workspace/models/"
+        model_path = "/mnt/si00068187c7/default/innovator_vl/models/"
         self.siglip_processor = AutoProcessor.from_pretrained(model_path + "siglip2-so400m-patch14-384", use_fast=True)
-        self.dinov3_processor = AutoProcessor.from_pretrained(model_path + "dinov3-vitl16-pretrain-lvd1689m", use_fast=True, size=(512, 512))
+        self.dinov3_processor = create_dinov3_processor()
 
     def _to_image_list(self, images):
         if images is None:
@@ -38,17 +66,10 @@ class Qwen2VLMultiEncoderTaskEncoder(Qwen2VLTaskEncoder):
         pixel_values = self.siglip_processor(images=image_list, return_tensors="pt")["pixel_values"]
         return [pixel_values]
 
-    def _process_dinov3_images(self, images):
-        image_list = self._to_image_list(images)
-        if len(image_list) == 0:
-            return []
-        pixel_values = self.dinov3_processor(images=image_list, return_tensors="pt")["pixel_values"]
-        return [pixel_values]
-
     def _process_with_aux_pixels(self, image, text):
         input_ids, target, pixel_values, image_grid_thw, attn_mask = self._process(image, text)
         siglip_pixel_values = self._process_siglip_images(image)
-        dinov3_pixel_values = self._process_dinov3_images(image)
+        dinov3_pixel_values = [self.dinov3_processor(image)]
         return (
             input_ids,
             target,
@@ -72,9 +93,11 @@ class Qwen2VLMultiEncoderTaskEncoder(Qwen2VLTaskEncoder):
 
         if raw_image is not None:
             for current_image in raw_image:
+                pixel_values_images_dinov3.append(self.dinov3_processor(current_image))
+                pixel_values_images_siglip.append(self._process_siglip_images(current_image)[0])
+
                 resized_image = self._resize_image(current_image)
                 image.append(resized_image)
-            pixel_values_images_siglip = self._process_siglip_images(image)
 
         if raw_video is not None:
             for current_video in raw_video:
@@ -93,10 +116,6 @@ class Qwen2VLMultiEncoderTaskEncoder(Qwen2VLTaskEncoder):
         if raw_image is not None:
             image_grid_thw = mm_inputs["image_grid_thw"]
             pixel_values_images = [mm_inputs["pixel_values"]]
-            pixel_values_images_dinov3 = self._process_dinov3_images_from_qwen(
-                mm_inputs["pixel_values"],
-                image_grid_thw,
-            )
 
         encode_pairs = self.chat_template.encode_multiturn(
             tokenizer=self.tokenizer,
