@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from transformers.models.qwen2_vl.processing_qwen2_vl import Qwen2VLProcessor; import inspect; print\\(inspect.getfile\\(Qwen2VLProcessor\\)\\)\")",
+      "Bash(python3 -c \"from transformers.models.qwen2_vl.processing_qwen2_vl import Qwen2VLProcessor; import inspect; print\\(inspect.getfile\\(Qwen2VLProcessor\\)\\)\")",
+      "Read(//home/xrc/.cache/uv/archive-v0/hmQVP60FkKbAdRY0HyKZL/transformers/models/qwen2_vl/**)",
+      "Read(//home/xrc/.local/lib/python3.10/site-packages/transformers/**)",
+      "Bash(python3 -c \"import transformers; print\\(transformers.__version__\\)\")",
+      "Bash(pip3 list *)"
+    ]
+  }
+}

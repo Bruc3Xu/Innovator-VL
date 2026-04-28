@@ -69,3 +69,4 @@ stage_1_alignment_llava_ov_8b*
 *.DS_Store
 
 tmp/
+tmp2/

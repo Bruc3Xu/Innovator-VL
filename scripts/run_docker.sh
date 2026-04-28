@@ -1,0 +1,1 @@
+docker run -it --gpus all --ipc=host --network=host --ulimit memlock=-1 --ulimit stack=67108864 -v /mnt/si00068187c7/default/innovator_vl/:/mnt/si00068187c7/default/innovator_vl/ innovator-vl-instruct /bin/bash

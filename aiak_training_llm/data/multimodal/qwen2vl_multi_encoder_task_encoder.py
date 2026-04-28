@@ -11,7 +11,6 @@ from torchvision import transforms
 from PIL import Image
 
 from megatron.energon import CaptioningSample, VQASample
-from transformers import AutoProcessor
 
 from aiak_training_llm.data.multimodal import MultiMixQASample
 from aiak_training_llm.utils import constants
@@ -43,32 +42,52 @@ def create_dinov3_processor():
     return preprocess
 
 
+def create_siglip_processor():
+    """返回与 SiglipImageProcessor (TorchvisionBackend) 数值完全一致的预处理函数"""
+    # 注意：TorchvisionBackend 内部会 fuse rescale + normalize
+    # 即先 resize(uint8)，再用 mean*255, std*255 做 normalize
+    # 关键：必须使用 torchvision.transforms.v2.functional (与 transformers 内部一致)
+    fused_mean = torch.tensor([0.5, 0.5, 0.5]).view(3, 1, 1) * 255.0
+    fused_std = torch.tensor([0.5, 0.5, 0.5]).view(3, 1, 1) * 255.0
+    size = [384, 384]
+
+    def preprocess(image):
+        # 输入：PIL Image 或 numpy array (H,W,C) uint8 [0,255]
+        if isinstance(image, np.ndarray):
+            image = Image.fromarray(image.astype('uint8'))
+
+        # 1. PIL -> uint8 tensor [C, H, W]，范围 [0, 255]
+        # 与 TorchvisionBackend.process_image 完全一致
+        tensor = TVF.pil_to_tensor(image)  # uint8, [C,H,W]
+
+        # 2. Resize（双线性插值，antialias=True）在 uint8 上进行
+        # TorchvisionBackend 的 resize 也是直接对 uint8 tensor 操作
+        tensor = TVF.resize(
+            tensor,
+            size,
+            interpolation=TVF.InterpolationMode.BILINEAR,
+            antialias=True,
+        )
+
+        # 3. Normalize（fused: 等价于先 /255 再 (x-mean)/std）
+        tensor = TVF.normalize(tensor.float(), mean=fused_mean, std=fused_std)
+        return tensor.unsqueeze(0)
+
+    return preprocess
+
+
+
 class Qwen2VLMultiEncoderTaskEncoder(Qwen2VLTaskEncoder):
     """Extends the default Qwen2-VL encoder with a second SigLIP pixel stream."""
 
     def __init__(self, args):
         super().__init__(args)
-        model_path = "/mnt/si00068187c7/default/innovator_vl/models/"
-        self.siglip_processor = AutoProcessor.from_pretrained(model_path + "siglip2-so400m-patch14-384", use_fast=True)
+        self.siglip_processor = create_siglip_processor()
         self.dinov3_processor = create_dinov3_processor()
-
-    def _to_image_list(self, images):
-        if images is None:
-            return []
-        if isinstance(images, list):
-            return images
-        return [images]
-
-    def _process_siglip_images(self, images):
-        image_list = self._to_image_list(images)
-        if len(image_list) == 0:
-            return []
-        pixel_values = self.siglip_processor(images=image_list, return_tensors="pt")["pixel_values"]
-        return [pixel_values]
 
     def _process_with_aux_pixels(self, image, text):
         input_ids, target, pixel_values, image_grid_thw, attn_mask = self._process(image, text)
-        siglip_pixel_values = self._process_siglip_images(image)
+        siglip_pixel_values = [self.siglip_processor(image)]
         dinov3_pixel_values = [self.dinov3_processor(image)]
         return (
             input_ids,
@@ -94,7 +113,7 @@ class Qwen2VLMultiEncoderTaskEncoder(Qwen2VLTaskEncoder):
         if raw_image is not None:
             for current_image in raw_image:
                 pixel_values_images_dinov3.append(self.dinov3_processor(current_image))
-                pixel_values_images_siglip.append(self._process_siglip_images(current_image)[0])
+                pixel_values_images_siglip.append(self.siglip_processor(current_image))
 
                 resized_image = self._resize_image(current_image)
                 image.append(resized_image)

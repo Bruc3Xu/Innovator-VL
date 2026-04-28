@@ -42,11 +42,9 @@ from transformers.integrations import use_kernel_forward_from_hub
 from transformers.processing_utils import Unpack
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers import AutoModelForCausalLM, AutoConfig
-from transformers.models.dinov3_vit.modeling_dinov3_vit import DINOv3ViTLayerScale
 from innovator_vl.configuration_innovator_vl import InnovatorVlConfig, InnovatorVl_TextConfig, RiceConfig, HybridVitConfig
-from transformers import AutoModel, SiglipVisionModel
-from innovator_vl.hybrid_adapter import HybridAdapter
-from innovator_vl.custom_attention import replace_siglip2_attention_layers, replace_dinov3_attention_layers
+from innovator_vl.dinov3 import get_dinov3_model
+from innovator_vl.siglip import get_siglip_model
 
 
 if is_flash_attn_available():
@@ -60,6 +58,189 @@ if is_torch_flex_attn_available():
 
 
 logger = logging.get_logger(__name__)
+
+
+class HybridAdapter(nn.Module):
+    """
+    Hybrid adapter that manages 3 adapters for RiceViT, SigLIP2, and DINOv3 encoders,
+    and implements feature fusion logic.
+
+    The fusion strategy uses learnable gates to weighted combine features from
+    all three encoders, with an optional final projection layer.
+    """
+
+    def __init__(
+        self,
+        ricevit_input_size: int,
+        siglip_input_size: int,
+        dinov3_input_size: int,
+        output_size: int,
+        spatial_merge_size: int = 2,
+        fusion_type: str = "gated_sum",  # "gated_sum" or "concat"
+        layer_norm_eps: float = 1e-05,
+    ) -> None:
+        super().__init__()
+        self.fusion_type = fusion_type
+        self.output_size = output_size
+        self.spatial_merge_size = spatial_merge_size
+
+        # RiceViT adapter: processes base RiceViT features
+        self.ricevit_adapter = self._build_adapter(
+            input_size=ricevit_input_size,
+            output_size=output_size,
+            spatial_merge_size=spatial_merge_size,
+            layer_norm_eps=layer_norm_eps,
+        )
+
+        # SigLIP2 adapter: processes SigLIP2 features
+        self.siglip_adapter = self._build_adapter(
+            input_size=siglip_input_size,
+            output_size=output_size,
+            spatial_merge_size=1,  # External encoders don't use spatial merge
+            layer_norm_eps=layer_norm_eps,
+        )
+
+        # DINOv3 adapter: processes DINOv3 features
+        self.dinov3_adapter = self._build_adapter(
+            input_size=dinov3_input_size,
+            output_size=output_size,
+            spatial_merge_size=1,  # External encoders don't use spatial merge
+            layer_norm_eps=layer_norm_eps,
+        )
+
+        # Learnable fusion gates (initialized to 0 to start with RiceViT only)
+        self.ricevit_gate = nn.Parameter(torch.tensor(1.0))  # Start with full RiceViT
+        self.siglip_gate = nn.Parameter(torch.tensor(0.0))
+        self.dinov3_gate = nn.Parameter(torch.tensor(0.0))
+
+        # Optional fusion projection for concat mode
+        if fusion_type == "concat":
+            self.fusion_norm = nn.LayerNorm(output_size * 3, eps=layer_norm_eps)
+            self.fusion_proj = nn.Linear(output_size * 3, output_size, bias=True)
+        else:
+            # For gated_sum, just use a layernorm on output
+            self.fusion_norm = nn.LayerNorm(output_size, eps=layer_norm_eps)
+            self.fusion_proj = None
+
+    def _build_adapter(
+        self,
+        input_size: int,
+        output_size: int,
+        spatial_merge_size: int,
+        layer_norm_eps: float,
+    ) -> nn.Module:
+        """Build a single adapter with LayerNorm + MLP structure like RicePatchMerger."""
+        hidden_size = input_size * (spatial_merge_size ** 2) if spatial_merge_size > 1 else input_size
+        return nn.Sequential(
+            nn.LayerNorm(input_size, eps=layer_norm_eps),
+            nn.Linear(hidden_size, hidden_size),
+            nn.GELU(),
+            nn.Linear(hidden_size, output_size),
+        )
+
+    def forward(
+        self,
+        ricevit_features: torch.Tensor,
+        siglip_features: Optional[torch.Tensor] = None,
+        dinov3_features: Optional[torch.Tensor] = None,
+        window_index: Optional[torch.LongTensor] = None,
+    ) -> torch.Tensor:
+        """
+        Forward pass that fuses features from 3 encoders.
+
+        Args:
+            ricevit_features: [B, N_rice, C_rice] or [total_tokens, C_rice] RiceViT features (base)
+            siglip_features: [B, N_siglip, C_siglip] or [total_tokens, C_siglip] SigLIP2 features (optional)
+            dinov3_features: [B, N_dino, C_dino] or [total_tokens, C_dino] DINOv3 features (optional)
+
+        Returns:
+            Fused features [B, N_out, C_out] or [total_tokens, C_out]
+        """
+        # Process each encoder's features through their respective adapter
+        ricevit_out = self.ricevit_adapter(ricevit_features, window_index=window_index)
+
+        # Process external encoder features if provided
+        if siglip_features is not None:
+            siglip_out = self.siglip_adapter(siglip_features)
+            # Interpolate to match RiceViT token count if needed
+            if siglip_out.size(0) != ricevit_out.size(0):
+                siglip_out = self._interpolate_features(siglip_out, ricevit_out.size(0))
+        else:
+            siglip_out = torch.zeros_like(ricevit_out)
+
+        if dinov3_features is not None:
+            dinov3_out = self.dinov3_adapter(dinov3_features)
+            # Interpolate to match RiceViT token count if needed
+            if dinov3_out.size(0) != ricevit_out.size(0):
+                dinov3_out = self._interpolate_features(dinov3_out, ricevit_out.size(0))
+        else:
+            dinov3_out = torch.zeros_like(ricevit_out)
+
+        # Fuse features
+        if self.fusion_type == "gated_sum":
+            # Gated weighted sum
+            fused = (
+                torch.sigmoid(self.ricevit_gate) * ricevit_out +
+                torch.sigmoid(self.siglip_gate) * siglip_out +
+                torch.sigmoid(self.dinov3_gate) * dinov3_out
+            )
+        elif self.fusion_type == "concat":
+            # Concatenate and project
+            fused = torch.cat([ricevit_out, siglip_out, dinov3_out], dim=-1)
+            fused = self.fusion_norm(fused)
+            if self.fusion_proj is not None:
+                fused = self.fusion_proj(fused)
+        else:
+            raise ValueError(f"Unknown fusion_type: {self.fusion_type}")
+
+        # Final normalization
+        fused = self.fusion_norm(fused)
+
+        return fused
+
+    def _interpolate_features(
+        self,
+        features: torch.Tensor,
+        target_length: int,
+    ) -> torch.Tensor:
+        """
+        Interpolate features to match target sequence length.
+
+        Args:
+            features: [B, N, C] or [total_tokens, C] features
+            target_length: Target sequence length
+
+        Returns:
+            Interpolated features
+        """
+        original_shape = features.shape
+
+        if features.ndim == 2:
+            # [total_tokens, C] -> [1, C, total_tokens]
+            features = features.unsqueeze(0).permute(0, 2, 1)
+        elif features.ndim == 3:
+            # [B, N, C] -> [B, C, N]
+            features = features.permute(0, 2, 1)
+        else:
+            raise ValueError(f"Unexpected feature shape: {original_shape}")
+
+        # Interpolate
+        features = torch.nn.functional.interpolate(
+            features,
+            size=target_length,
+            mode='linear',
+            align_corners=False
+        )
+
+        # Restore shape
+        if len(original_shape) == 2:
+            # [1, C, target_length] -> [target_length, C]
+            features = features.permute(0, 2, 1).squeeze(0)
+        else:
+            # [B, C, target_length] -> [B, target_length, C]
+            features = features.permute(0, 2, 1)
+
+        return features.contiguous()
 
 
 @dataclass
@@ -937,9 +1118,6 @@ class RiceTransformerPretrainedModel(Qwen2VLPreTrainedModel):
         self.blocks = nn.ModuleList(
             [RiceBlock(config, config._attn_implementation) for _ in range(config.depth)]
         )
-        self.merger = RicePatchMerger(
-            dim=config.text_hidden_size, context_dim=config.hidden_size, spatial_merge_size=config.spatial_merge_size, layer_norm_eps = config.layer_norm_eps
-        )
         self.gradient_checkpointing = False
 
     def get_dtype(self) -> torch.dtype:
@@ -1084,18 +1262,7 @@ class RiceTransformerPretrainedModel(Qwen2VLPreTrainedModel):
             seg_end = cu[i].item()
             new_hidden[seg_start:seg_end] = hidden_states[seg_start+1:seg_end+1]
         hidden_states = new_hidden
-        if is_verifying:
-            return hidden_states
-
-        return self.merger(hidden_states)
-
-
-def replace_by_type(module: nn.Module, target_type, factory=lambda _: nn.Identity()):
-    for name, child in list(module.named_children()):
-        if isinstance(child, target_type):
-            setattr(module, name, factory(child))  # 替换为新模块
-        else:
-            replace_by_type(child, target_type, factory)
+        return hidden_states
 
 
 class HybridVitPretrainedModel(Qwen2VLPreTrainedModel):
@@ -1105,16 +1272,8 @@ class HybridVitPretrainedModel(Qwen2VLPreTrainedModel):
     def __init__(self, config) -> None:
         super().__init__(config=config)
         self.rice_vit = RiceTransformerPretrainedModel(config)
-
-        self.siglip_model = SiglipVisionModel.from_pretrained("models/siglip2-so400m-patch14-384").vision_model
-        self.siglip_model = replace_siglip2_attention_layers(self.siglip_model)
-        self.siglip_model.post_layernorm = nn.Identity()
-        self.siglip_model.head = nn.Identity()
-
-        self.dinov3_model = AutoModel.from_pretrained("models/dinov3-vitl16-pretrain-lvd1689m")
-        self.dinov3_model = replace_dinov3_attention_layers(self.dinov3_model)
-        self.dinov3_model.norm = nn.Identity()
-        replace_by_type(self.dinov3_model, DINOv3ViTLayerScale)
+        self.siglip_model = get_siglip_model()
+        self.dinov3_model = get_dinov3_model()
 
         self.merger = HybridAdapter(config.hidden_size,
                                     self.siglip_model.config.hidden_size,
@@ -1671,7 +1830,11 @@ class InnovatorVl_Model(Qwen2VLPreTrainedModel):
             return position_ids, mrope_position_deltas
 
     def get_video_features(
-        self, pixel_values_videos: torch.FloatTensor, video_grid_thw: Optional[torch.LongTensor] = None
+        self,
+        pixel_values_videos: torch.FloatTensor,
+        video_grid_thw: Optional[torch.LongTensor] = None,
+        pixel_values_images_siglip: Optional[torch.Tensor] = None,
+        pixel_values_images_dinov3: Optional[torch.Tensor] = None,
     ):
         """
         Encodes videos into continuous embeddings that can be forwarded to the language model.
@@ -1681,12 +1844,27 @@ class InnovatorVl_Model(Qwen2VLPreTrainedModel):
                 The tensors corresponding to the input videos.
             video_grid_thw (`torch.LongTensor` of shape `(num_videos, 3)`, *optional*):
                 The temporal, height and width of feature shape of each video in LLM.
+            pixel_values_images_siglip (`torch.FloatTensor`, *optional*):
+                The tensors corresponding to the input videos for SigLIP2 encoder.
+            pixel_values_images_dinov3 (`torch.FloatTensor`, *optional*):
+                The tensors corresponding to the input videos for DINOv3 encoder.
         """
         pixel_values_videos = pixel_values_videos.type(self.visual.dtype)
-        video_embeds = self.visual(pixel_values_videos, grid_thw=video_grid_thw)
+        video_embeds = self.visual(
+            pixel_values_videos,
+            grid_thw=video_grid_thw,
+            pixel_values_images_siglip=pixel_values_images_siglip,
+            pixel_values_images_dinov3=pixel_values_images_dinov3,
+        )
         return video_embeds
 
-    def get_image_features(self, pixel_values: torch.FloatTensor, image_grid_thw: Optional[torch.LongTensor] = None):
+    def get_image_features(
+        self,
+        pixel_values: torch.FloatTensor,
+        image_grid_thw: Optional[torch.LongTensor] = None,
+        pixel_values_images_siglip: Optional[torch.Tensor] = None,
+        pixel_values_images_dinov3: Optional[torch.Tensor] = None,
+    ):
         """
         Encodes images into continuous embeddings that can be forwarded to the language model.
 
@@ -1695,9 +1873,18 @@ class InnovatorVl_Model(Qwen2VLPreTrainedModel):
                 The tensors corresponding to the input images.
             image_grid_thw (`torch.LongTensor` of shape `(num_images, 3)`, *optional*):
                 The temporal, height and width of feature shape of each image in LLM.
+            pixel_values_images_siglip (`torch.FloatTensor`, *optional*):
+                The tensors corresponding to the input images for SigLIP2 encoder.
+            pixel_values_images_dinov3 (`torch.FloatTensor`, *optional*):
+                The tensors corresponding to the input images for DINOv3 encoder.
         """
         pixel_values = pixel_values.type(self.visual.dtype)
-        image_embeds = self.visual(pixel_values, grid_thw=image_grid_thw)
+        image_embeds = self.visual(
+            pixel_values,
+            grid_thw=image_grid_thw,
+            pixel_values_images_siglip=pixel_values_images_siglip,
+            pixel_values_images_dinov3=pixel_values_images_dinov3,
+        )
         return image_embeds
 
     @auto_docstring
@@ -1716,6 +1903,8 @@ class InnovatorVl_Model(Qwen2VLPreTrainedModel):
         pixel_values_videos: Optional[torch.FloatTensor] = None,
         image_grid_thw: Optional[torch.LongTensor] = None,
         video_grid_thw: Optional[torch.LongTensor] = None,
+        pixel_values_images_siglip: Optional[torch.Tensor] = None,
+        pixel_values_images_dinov3: Optional[torch.Tensor] = None,
         rope_deltas: Optional[torch.LongTensor] = None,
         cache_position: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple, InnovatorVl_ModelOutputWithPast]:
@@ -1741,7 +1930,12 @@ class InnovatorVl_Model(Qwen2VLPreTrainedModel):
         if inputs_embeds is None:
             inputs_embeds = self.get_input_embeddings()(input_ids)
             if pixel_values is not None:
-                image_embeds = self.get_image_features(pixel_values, image_grid_thw)
+                image_embeds = self.get_image_features(
+                    pixel_values,
+                    image_grid_thw,
+                    pixel_values_images_siglip=pixel_values_images_siglip,
+                    pixel_values_images_dinov3=pixel_values_images_dinov3,
+                )
                 n_image_tokens = (input_ids == self.config.image_token_id).sum().item()
                 n_image_features = image_embeds.shape[0]
                 if not is_torchdynamo_compiling() and n_image_tokens != n_image_features:
@@ -1758,7 +1952,12 @@ class InnovatorVl_Model(Qwen2VLPreTrainedModel):
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if pixel_values_videos is not None:
-                video_embeds = self.get_video_features(pixel_values_videos, video_grid_thw)
+                video_embeds = self.get_video_features(
+                    pixel_values_videos,
+                    video_grid_thw,
+                    pixel_values_images_siglip=pixel_values_images_siglip,
+                    pixel_values_images_dinov3=pixel_values_images_dinov3,
+                )
                 n_video_tokens = (input_ids == self.config.video_token_id).sum().item()
                 n_video_features = video_embeds.shape[0]
                 if not is_torchdynamo_compiling() and n_video_tokens != n_video_features:
@@ -1928,6 +2127,8 @@ class InnovatorVl_ForConditionalGeneration(Qwen2VLPreTrainedModel, GenerationMix
         pixel_values_videos: Optional[torch.FloatTensor] = None,
         image_grid_thw: Optional[torch.LongTensor] = None,
         video_grid_thw: Optional[torch.LongTensor] = None,
+        pixel_values_images_siglip: Optional[torch.Tensor] = None,
+        pixel_values_images_dinov3: Optional[torch.Tensor] = None,
         rope_deltas: Optional[torch.LongTensor] = None,
         cache_position: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple, InnovatorVl_CausalLMOutputWithPast]:
@@ -1992,6 +2193,8 @@ class InnovatorVl_ForConditionalGeneration(Qwen2VLPreTrainedModel, GenerationMix
             pixel_values_videos=pixel_values_videos,
             image_grid_thw=image_grid_thw,
             video_grid_thw=video_grid_thw,
+            pixel_values_images_siglip=pixel_values_images_siglip,
+            pixel_values_images_dinov3=pixel_values_images_dinov3,
             position_ids=position_ids,
             attention_mask=attention_mask,
             past_key_values=past_key_values,
@@ -2056,6 +2259,8 @@ class InnovatorVl_ForConditionalGeneration(Qwen2VLPreTrainedModel, GenerationMix
         if model_inputs["cache_position"][0] != 0:
             model_inputs["pixel_values"] = None
             model_inputs["pixel_values_videos"] = None
+            model_inputs["pixel_values_images_siglip"] = None
+            model_inputs["pixel_values_images_dinov3"] = None
 
         return model_inputs
 
@@ -2103,7 +2308,10 @@ class InnovatorVl_ForConditionalGeneration(Qwen2VLPreTrainedModel, GenerationMix
         if expand_size == 1:
             return input_ids, model_kwargs
 
-        visual_keys = ["pixel_values", "image_grid_thw", "pixel_values_videos", "video_grid_thw", "second_per_grid_ts"]
+        visual_keys = [
+            "pixel_values", "image_grid_thw", "pixel_values_videos", "video_grid_thw",
+            "second_per_grid_ts", "pixel_values_images_siglip", "pixel_values_images_dinov3",
+        ]
 
         def _expand_dict_for_generation_visual(dict_to_expand):
             image_grid_thw = model_kwargs.get("image_grid_thw", None)
@@ -2139,6 +2347,16 @@ class InnovatorVl_ForConditionalGeneration(Qwen2VLPreTrainedModel, GenerationMix
                     )
                 elif key == "video_grid_thw":
                     lengths = list(video_nums)
+                    dict_to_expand[key] = _repeat_interleave_samples(
+                        dict_to_expand[key], lengths=lengths, repeat_times=expand_size
+                    )
+                elif key == "pixel_values_images_siglip":
+                    lengths = list(image_nums)
+                    dict_to_expand[key] = _repeat_interleave_samples(
+                        dict_to_expand[key], lengths=lengths, repeat_times=expand_size
+                    )
+                elif key == "pixel_values_images_dinov3":
+                    lengths = list(image_nums)
                     dict_to_expand[key] = _repeat_interleave_samples(
                         dict_to_expand[key], lengths=lengths, repeat_times=expand_size
                     )
